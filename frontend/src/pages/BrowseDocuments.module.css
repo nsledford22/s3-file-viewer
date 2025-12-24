@@ -1,0 +1,4 @@
+.inputField:focus {
+  border-color: var(--mantine-color-violet-light-color) !important;
+  border-width: 2px !important;
+}

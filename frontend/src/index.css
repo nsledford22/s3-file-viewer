@@ -1,0 +1,5 @@
+.mantine-Drawer-body {
+  height: 90% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
