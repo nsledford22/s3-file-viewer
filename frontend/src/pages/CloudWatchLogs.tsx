@@ -171,7 +171,7 @@ export function CloudWatchLogs() {
         <Title order={1}>
           <Group gap="md">
             <IconTerminal size={32} />
-            CloudWatch Logs Viewer
+            Browse CloudWatch Logs
           </Group>
         </Title>
 

@@ -182,7 +182,7 @@ export function UploadFile() {
     <Container size="xl" py="xl">
       <Title order={1} mb="xl" ta="center">
         <Group gap="md" justify="center">
-          Upload Files
+          Upload File(s)
         </Group>
       </Title>
 

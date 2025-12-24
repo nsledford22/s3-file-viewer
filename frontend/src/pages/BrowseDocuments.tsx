@@ -38,9 +38,21 @@ import {
   IconFileTypeDocx,
   IconChevronRight,
   IconTrash,
+  IconBrandPython,
+  IconBrandHtml5,
+  IconBrandCss3,
+  IconBrandJavascript,
+  IconBrandTypescript,
+  IconJson,
+  IconFileText,
+  IconSql
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import SyntaxHighlighter from 'react-syntax-highlighter';
+import atomOneDark from 'react-syntax-highlighter/dist/esm/styles/hljs/atom-one-dark';
+import atomOneLight from 'react-syntax-highlighter/dist/esm/styles/hljs/atom-one-light';
+import { useMantineColorScheme } from '@mantine/core';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -49,6 +61,7 @@ interface S3File {
   name: string;
   size: number;
   last_modified: string;
+  rawContent?: string; // For code files
 }
 
 interface S3Folder {
@@ -56,28 +69,54 @@ interface S3Folder {
   name: string;
 }
 
-const getFileType = (filename: string): 'pdf' | 'docx' | 'doc' | 'excel' | 'csv' | 'other' => {
+const getFileType = (filename: string): 'pdf' | 'docx' | 'doc' | 'excel' | 'csv' | 'code' | 'other' => {
   const ext = filename.toLowerCase().split('.').pop() || '';
   if (ext === 'pdf') return 'pdf';
   if (ext === 'docx') return 'docx';
   if (ext === 'doc') return 'doc';
   if (['xlsx', 'xls'].includes(ext)) return 'excel';
   if (ext === 'csv') return 'csv';
+  if (['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'].includes(ext)) return 'code';
   return 'other';
 };
 
 const getFileIcon = (filename: string, size: number = 20) => {
-  const type = getFileType(filename);
+  const ext = filename.toLowerCase().split('.').pop() || '';
 
-  switch (type) {
+  switch (ext) {
     case 'pdf':
       return <IconFileTypePdf size={size} color="#ED2224" />;
-    case 'excel':
+    case 'xlsx':
+    case 'xls':
       return <IconFileTypeXls size={size} color="#008000" />;
     case 'csv':
       return <IconFileTypeCsv size={size} color="#008040" />;
     case 'docx':
+    case 'doc':
       return <IconFileTypeDocx size={size} color="#00A2ED" />;
+
+    // Code/Text files
+    case 'html':
+    case 'htm':
+      return <IconBrandHtml5 size={size} color="#E34F26" />;
+    case 'css':
+      return <IconBrandCss3 size={size} color="#1572B6" />;
+    case 'js':
+    case 'jsx':
+      return <IconBrandJavascript size={size} color="#F7DF1E" />;
+    case 'ts':
+    case 'tsx':
+      return <IconBrandTypescript size={size} color="#3178C6" />;
+    case 'py':
+      return <IconBrandPython size={size} color="#3776AB" />;
+    case 'json':
+      return <IconJson size={size} color="#F7DF1E" />;
+    case 'txt':
+    case 'log':
+    case 'md':
+      return <IconFileText size={size} color="#7950F2" />;
+    case 'sql':
+      return <IconSql size={size} color="#F29111" />;
     default:
       return <IconFile size={size} color="gray" />;
   }
@@ -86,24 +125,27 @@ const getFileIcon = (filename: string, size: number = 20) => {
 const getItemsPerPage = (density: number): number => {
   switch (density) {
     case 3: return 6;
-    case 4: return 8;   
-    case 5: return 10;  
-    case 6: return 12;  
+    case 4: return 8;
+    case 5: return 10;
+    case 6: return 12;
     default: return 8;
   }
 };
 
 export function BrowseDocuments() {
+  const { colorScheme } = useMantineColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [files, setFiles] = useState<S3File[]>([]);
   const [folders, setFolders] = useState<S3Folder[]>([]);
-  const [currentPrefix, setCurrentPrefix] = useState(''); // Root = bucket root
+  const [currentPrefix, setCurrentPrefix] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<S3File | null>(null);
-  const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'error'>('loading');
+  const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'code' | 'error'>('loading');
   const [wordHtml, setWordHtml] = useState<string>('');
   const [sheetData, setSheetData] = useState<any[][]>([]);
   const [density, setDensity] = useState(4);
@@ -145,7 +187,7 @@ export function BrowseDocuments() {
     }
   }, [selectedBucket]);
 
-  // Breadcrumbs: bucket as root
+  // Breadcrumbs
   const breadcrumbItems = currentPrefix
     .split('/')
     .filter(Boolean)
@@ -242,6 +284,17 @@ export function BrowseDocuments() {
 
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
+      const textDecoder = new TextDecoder('utf-8');
+      const textContent = textDecoder.decode(arrayBuffer);
+
+      const ext = file.name.toLowerCase().split('.').pop() || '';
+      const codeExtensions = ['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'];
+
+      if (codeExtensions.includes(ext)) {
+        (file as any).rawContent = textContent;
+        setPreviewContent('code');
+        return;
+      }
 
       const type = getFileType(file.name);
 
@@ -287,7 +340,6 @@ export function BrowseDocuments() {
         icon: <IconTrash size={18} />,
       });
 
-      // Refresh current folder
       const refreshed = await fetch(
         `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket!)}&prefix=${encodeURIComponent(currentPrefix)}`
       );
@@ -373,7 +425,7 @@ export function BrowseDocuments() {
         Browse Documents
       </Title>
 
-      {/* Top Controls: Bucket + Search + Density (inline) */}
+      {/* Top Controls: Bucket + Search + Density */}
       <Group justify="space-between" align="end" mb="xl" wrap="wrap">
         <Select
           placeholder="Select bucket..."
@@ -416,7 +468,6 @@ export function BrowseDocuments() {
 
       {/* Pagination */}
       <Group justify="flex-end" align="center" mb="xl" wrap="nowrap">
-
         {totalPages > 1 && (
           <Pagination
             total={totalPages}
@@ -655,6 +706,50 @@ export function BrowseDocuments() {
             {(() => {
               if (!selectedFile) return null;
 
+              const ext = selectedFile.name.toLowerCase().split('.').pop() || '';
+              const codeExtensions = ['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'];
+
+              if (codeExtensions.includes(ext)) {
+                const languageMap: Record<string, string> = {
+                  js: 'javascript',
+                  jsx: 'javascript',
+                  ts: 'typescript',
+                  tsx: 'typescript',
+                  html: 'html',
+                  htm: 'html',
+                  json: 'json',
+                  css: 'css',
+                  xml: 'xml',
+                  yaml: 'yaml',
+                  yml: 'yaml',
+                  md: 'markdown',
+                  py: 'python',
+                  sh: 'bash',
+                  sql: 'sql',
+                };
+
+                const language = languageMap[ext] || 'text';
+
+                return (
+                  <ScrollArea h="100%">
+                    <SyntaxHighlighter
+                      language={language}
+                      style={isDark ? atomOneDark : atomOneLight}
+                      showLineNumbers
+                      wrapLines
+                      customStyle={{
+                        margin: 0,
+                        borderRadius: 'var(--mantine-radius-md)',
+                        padding: '1.5rem',
+                        fontSize: '14px',
+                      }}
+                    >
+                      {(selectedFile as any).rawContent || '// Unable to display content'}
+                    </SyntaxHighlighter>
+                  </ScrollArea>
+                );
+              }
+
               const type = getFileType(selectedFile.name);
 
               if (previewContent === 'iframe' || type === 'pdf' || type === 'other') {
@@ -745,7 +840,7 @@ export function BrowseDocuments() {
 
               return (
                 <Center h="100%">
-                  <Text c="dimmed">Loading preview...</Text>
+                  <Text c="dimmed">Preview not available for this file type</Text>
                 </Center>
               );
             })()}
