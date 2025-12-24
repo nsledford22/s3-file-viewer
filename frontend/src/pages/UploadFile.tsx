@@ -148,7 +148,6 @@ export function UploadFile() {
           size="md"
           radius="xl"
           onClick={() => openRef.current?.()}
-          color="violet"
           disabled={uploading}
           leftSection={uploading ? <Loader size="sm" /> : <IconUpload size={18} />}
         >
@@ -159,12 +158,11 @@ export function UploadFile() {
           <Alert
             icon={<IconUpload size={20} />}
             title="Uploading files..."
-            color="violet"
             variant="light"
             w="100%"
             maw={600}
           >
-            <Progress value={progress} animated striped color="violet" mb="md" />
+            <Progress value={progress} animated striped mb="md" />
             <Text size="sm" c="dimmed">
               Processing {currentFiles.length} file(s) — {progress}% complete
             </Text>
