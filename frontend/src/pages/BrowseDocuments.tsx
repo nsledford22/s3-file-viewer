@@ -542,7 +542,6 @@ export function BrowseDocuments() {
                     <Group grow mt="auto">
                       <Button
                         variant="light"
-                        color="violet"
                         leftSection={<IconDownload size={16} />}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -630,7 +629,6 @@ export function BrowseDocuments() {
                           <Button
                             size="xs"
                             variant="light"
-                            color="violet"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedFile(item as S3File);
