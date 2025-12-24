@@ -1,0 +1,22 @@
+// src/App.tsx
+import { Routes, Route } from 'react-router-dom';
+import { Layout } from './components/Layout';
+import { Home } from './pages/Home';
+import { NotFound } from './pages/NotFound';
+import { BrowseDocuments } from './pages/BrowseDocuments';
+import { UploadFile } from './pages/UploadFile';
+
+function App() {
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/browse" element={<BrowseDocuments />} />
+        <Route path="/upload" element={<UploadFile />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Layout>
+  );
+}
+
+export default App;
