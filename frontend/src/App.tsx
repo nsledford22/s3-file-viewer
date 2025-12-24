@@ -5,6 +5,7 @@ import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
 import { BrowseDocuments } from './pages/BrowseDocuments';
 import { UploadFile } from './pages/UploadFile';
+import { CloudWatchLogs } from './pages/CloudWatchLogs';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/browse" element={<BrowseDocuments />} />
         <Route path="/upload" element={<UploadFile />} />
+        <Route path="/cloudwatch-logs" element={<CloudWatchLogs />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>

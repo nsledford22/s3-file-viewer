@@ -1,6 +1,6 @@
 // src/pages/Home.tsx
 import { Container, Title, Text, Card, SimpleGrid, Button, Group } from '@mantine/core';
-import { IconFileSearch, IconUpload } from '@tabler/icons-react';
+import { IconFileSearch, IconUpload, IconCloudNetwork } from '@tabler/icons-react';
 
 export function Home() {
   return (
@@ -15,7 +15,7 @@ export function Home() {
       </Text>
 
       {/* Feature Cards – 2 columns on sm+ screens */}
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Group justify="center" mb="md">
             <IconFileSearch size={48} stroke={1.5} color="var(--mantine-color-grape-6)" />
@@ -24,7 +24,7 @@ export function Home() {
             Browse Documents
           </Title>
           <Text ta="center" c="dimmed" size="sm" mb="md">
-            View your files in a clean card or table layout.
+            View your files stored in S3 in a clean card or table layout.
           </Text>
           <Button 
             fullWidth 
@@ -44,7 +44,7 @@ export function Home() {
             Upload New Files
           </Title>
           <Text ta="center" c="dimmed" size="sm" mb="md">
-            Securely add documents to your S3 bucket.
+            Securely add documents to your S3 bucket with the desired path.
           </Text>
           <Button 
             fullWidth 
@@ -56,6 +56,27 @@ export function Home() {
             Upload Now
           </Button>
         </Card>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Group justify='center' mb="md">
+          <IconCloudNetwork size={48} stroke={1.5} color="var(--mantine-color-blue-6)" />
+        </Group>
+        <Title order={3} ta="center" mb="xs">
+          View Cloudwatch Logs
+        </Title>
+        <Text ta="center" c="dimmed" size="sm" mb="md">
+          Monitor application logs directly from CloudWatch.
+        </Text>
+        <Button 
+          fullWidth 
+          variant="light" 
+          color="blue"
+          component="a"
+          href="/cloudwatch-logs"
+        >
+          View Logs
+        </Button>
+      </Card>
       </SimpleGrid>
     </Container>
   );

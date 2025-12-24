@@ -20,8 +20,11 @@ import {
   ScrollArea,
   Breadcrumbs,
   Anchor,
-  Slider
+  Slider,
+  ActionIcon,
+  Select,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   IconLayoutGrid,
   IconTable,
@@ -29,14 +32,17 @@ import {
   IconDownload,
   IconFolder,
   IconFile,
+  IconFileTypePdf,
+  IconFileTypeXls,
+  IconFileTypeCsv,
+  IconFileTypeDocx,
   IconChevronRight,
+  IconTrash,
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 
-const ITEMS_PER_PAGE = 12;
-const BUCKET_NAME = 's3-file-viewer-files';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 interface S3File {
   key: string;
@@ -46,7 +52,7 @@ interface S3File {
 }
 
 interface S3Folder {
-  key: string; // ends with '/'
+  key: string;
   name: string;
 }
 
@@ -60,13 +66,40 @@ const getFileType = (filename: string): 'pdf' | 'docx' | 'doc' | 'excel' | 'csv'
   return 'other';
 };
 
+const getFileIcon = (filename: string, size: number = 20) => {
+  const type = getFileType(filename);
+
+  switch (type) {
+    case 'pdf':
+      return <IconFileTypePdf size={size} color="#ED2224" />;
+    case 'excel':
+      return <IconFileTypeXls size={size} color="#008000" />;
+    case 'csv':
+      return <IconFileTypeCsv size={size} color="#008040" />;
+    case 'docx':
+      return <IconFileTypeDocx size={size} color="#00A2ED" />;
+    default:
+      return <IconFile size={size} color="gray" />;
+  }
+};
+
+const getItemsPerPage = (density: number): number => {
+  switch (density) {
+    case 3: return 6;
+    case 4: return 8;   
+    case 5: return 10;  
+    case 6: return 12;  
+    default: return 8;
+  }
+};
+
 export function BrowseDocuments() {
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [files, setFiles] = useState<S3File[]>([]);
   const [folders, setFolders] = useState<S3Folder[]>([]);
-  const [currentPrefix, setCurrentPrefix] = useState('files/');
+  const [currentPrefix, setCurrentPrefix] = useState(''); // Root = bucket root
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<S3File | null>(null);
@@ -75,7 +108,44 @@ export function BrowseDocuments() {
   const [sheetData, setSheetData] = useState<any[][]>([]);
   const [density, setDensity] = useState(4);
 
-  // Build proper breadcrumbs from currentPrefix
+  // Bucket selection
+  const [buckets, setBuckets] = useState<string[]>([]);
+  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
+
+  const itemsPerPage = getItemsPerPage(density);
+
+  // Load available buckets
+  useEffect(() => {
+    const fetchBuckets = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/list_buckets`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        setBuckets(data.buckets || []);
+        if (data.buckets?.length > 0) {
+          setSelectedBucket(data.buckets[0]);
+        }
+      } catch {
+        notifications.show({
+          title: 'Error',
+          message: 'Failed to load S3 buckets',
+          color: 'red',
+        });
+      }
+    };
+    fetchBuckets();
+  }, []);
+
+  // Reset to bucket root when bucket changes
+  useEffect(() => {
+    if (selectedBucket) {
+      setCurrentPrefix('');
+      setCurrentPage(1);
+      setSearchQuery('');
+    }
+  }, [selectedBucket]);
+
+  // Breadcrumbs: bucket as root
   const breadcrumbItems = currentPrefix
     .split('/')
     .filter(Boolean)
@@ -100,31 +170,33 @@ export function BrowseDocuments() {
     }
   }, [selectedFile]);
 
-  // Fetch files and folders
+  // Fetch contents
   useEffect(() => {
+    if (!selectedBucket) return;
+
     const fetchContents = async () => {
       try {
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `${API_BASE_URL}/list_files?bucket_name=${BUCKET_NAME}&prefix=${encodeURIComponent(currentPrefix)}`
+          `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket)}&prefix=${encodeURIComponent(currentPrefix)}`
         );
         if (!response.ok) throw new Error('Failed to fetch contents');
         const data = await response.json();
 
         setFiles(data.files || []);
-        setFolders(data.folders || []); // Backend must return folders array
+        setFolders(data.folders || []);
       } catch (err: any) {
-        setError(err.message || 'Unable to load folder contents');
+        setError(err.message || 'Unable to load contents');
       } finally {
         setLoading(false);
       }
     };
 
     fetchContents();
-  }, [currentPrefix]);
+  }, [currentPrefix, selectedBucket]);
 
-  // Combine files and folders for display and search
+  // Combine and filter items
   const allItems = [
     ...folders.map(f => ({ ...f, type: 'folder' as const })),
     ...files.map(f => ({ ...f, type: 'file' as const })),
@@ -132,13 +204,13 @@ export function BrowseDocuments() {
 
   const filteredItems = allItems.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ('key' in item && item.key.toLowerCase().includes(searchQuery.toLowerCase()))
+    item.key.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const totalItems = filteredItems.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedItems = filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedItems = filteredItems.slice(startIndex, startIndex + itemsPerPage);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -164,7 +236,7 @@ export function BrowseDocuments() {
   const loadFilePreview = async (file: S3File) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/view_file/${encodeURIComponent(file.key)}?bucket_name=${BUCKET_NAME}`
+        `${API_BASE_URL}/view_file/${encodeURIComponent(file.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`
       );
       if (!response.ok) throw new Error('Failed to load file');
 
@@ -194,9 +266,59 @@ export function BrowseDocuments() {
     }
   };
 
+  const handleDelete = async (key: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete_file/?key=${encodeURIComponent(key)}&bucket_name=${encodeURIComponent(selectedBucket!)}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Delete failed');
+      }
+
+      notifications.show({
+        title: 'Deleted',
+        message: `${name} has been permanently deleted`,
+        color: 'red',
+        icon: <IconTrash size={18} />,
+      });
+
+      // Refresh current folder
+      const refreshed = await fetch(
+        `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket!)}&prefix=${encodeURIComponent(currentPrefix)}`
+      );
+      const data = await refreshed.json();
+      setFiles(data.files || []);
+      setFolders(data.folders || []);
+    } catch (error: any) {
+      notifications.show({
+        title: 'Delete Failed',
+        message: error.message,
+        color: 'red',
+        autoClose: false,
+      });
+    }
+  };
+
   useEffect(() => {
     if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
+
+  if (!selectedBucket) {
+    return (
+      <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
+        <Center h="60vh">
+          <Text c="dimmed" size="xl">
+            Loading S3 buckets...
+          </Text>
+        </Center>
+      </Container>
+    );
+  }
 
   if (loading) {
     return (
@@ -220,11 +342,11 @@ export function BrowseDocuments() {
 
   return (
     <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
-      {/* Breadcrumbs + View Switch (inline) */}
+      {/* Breadcrumbs + View Switch */}
       <Group justify="space-between" align="center" mb="lg" wrap="nowrap">
         <Breadcrumbs separator={<IconChevronRight size={16} />}>
-          <Anchor onClick={() => navigateToPrefix('files/')} style={{ cursor: 'pointer' }}>
-            Home
+          <Anchor onClick={() => setCurrentPrefix('')} style={{ cursor: 'pointer' }}>
+            {selectedBucket}
           </Anchor>
           {breadcrumbItems.map((item) => (
             <Anchor
@@ -242,27 +364,38 @@ export function BrowseDocuments() {
           <Switch
             checked={viewMode === 'table'}
             onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
-            thumbIcon={viewMode === 'table' ? <IconTable size={16} /> : <IconLayoutGrid size={16} />}
+            thumbIcon={viewMode === 'table' ? <IconTable size={12} /> : <IconLayoutGrid size={12} />}
           />
         </Group>
       </Group>
 
-      {/* Header */}
-      <Group justify="space-between" align="center" mb="xl" wrap="wrap">
-        <Title order={1}>Browse Documents</Title>
+      <Title order={1} mb="sm">
+        Browse Documents
+      </Title>
 
-        <Group gap="md">
+      {/* Top Controls: Bucket + Search + Density (inline) */}
+      <Group justify="space-between" align="end" mb="xl" wrap="wrap">
+        <Select
+          placeholder="Select bucket..."
+          data={buckets}
+          value={selectedBucket}
+          onChange={setSelectedBucket}
+          searchable
+          w={300}
+          leftSection={<IconFolder size={16} />}
+        />
+
+        <Group gap="md" grow>
           <TextInput
             placeholder="Search files or folders..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            w={350}
+            w={400}
           />
 
-          {/* Card Size Slider */}
           <Group gap="xs" align="center">
-            <Text size="sm" fw={500}>Card size:</Text>
+            <Text size="sm" fw={500}>Item size:</Text>
             <Slider
               min={3}
               max={6}
@@ -281,11 +414,8 @@ export function BrowseDocuments() {
         </Group>
       </Group>
 
-      {/* Current location & Pagination */}
-      <Group justify="space-between" align="center" mb="xl" wrap="nowrap">
-        <Text size="sm" c="dimmed">
-          Location: <strong>{currentPrefix === 'files/' ? '/' : currentPrefix}</strong>
-        </Text>
+      {/* Pagination */}
+      <Group justify="flex-end" align="center" mb="xl" wrap="nowrap">
 
         {totalPages > 1 && (
           <Pagination
@@ -300,7 +430,7 @@ export function BrowseDocuments() {
       {/* Content Grid */}
       {totalItems === 0 ? (
         <Text ta="center" c="dimmed" size="lg" py="xl">
-          This folder is empty.
+          This location is empty.
         </Text>
       ) : (
         <>
@@ -322,8 +452,7 @@ export function BrowseDocuments() {
                       onClick={() => navigateToPrefix(item.key)}
                     >
                       <Group align="center" gap="md">
-                        <IconFolder size={40} color='#cc5de8	
-' />
+                        <IconFolder size={40} color="#cc5de8" />
                         <Text fw={600} size="lg">
                           {item.name}
                         </Text>
@@ -335,29 +464,55 @@ export function BrowseDocuments() {
                   );
                 }
 
+                const file = item as S3File;
+
                 return (
                   <Card
+                    key={file.key}
                     padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
                     radius="md"
                     withBorder
                     shadow="sm"
                   >
                     <Group align="center" gap="xs" mb="xs">
-                      <IconFile size={20} color="gray" />
+                      {getFileIcon(file.name, 24)}
                       <Text fw={500} truncate="end" maw={260}>
-                        {item.name}
+                        {file.name}
                       </Text>
                     </Group>
-                    <Text size="xs" c="dimmed" truncate>
-                      {item.key}
+                    <Text size="xs" c="dimmed" truncate mb="md">
+                      {file.key}
                     </Text>
-                    <Group gap="xs" mb="md" mt="sm">
-                      <Badge variant="light" color="yellow">{formatSize(item.size)}</Badge>
-                      <Badge variant="light" color="gray">{formatDate(item.last_modified)}</Badge>
+                    <Group gap="xs" mb="md">
+                      <Badge variant="light" color="yellow">{formatSize(file.size)}</Badge>
+                      <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
                     </Group>
-                    <Button fullWidth variant="light" onClick={() => setSelectedFile(item)}>
-                      View / Download
-                    </Button>
+
+                    <Group grow mt="auto">
+                      <Button
+                        variant="light"
+                        color="violet"
+                        leftSection={<IconDownload size={16} />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(file);
+                        }}
+                      >
+                        View
+                      </Button>
+
+                      <ActionIcon
+                        variant="light"
+                        color="red"
+                        size="lg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(file.key, file.name);
+                        }}
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Group>
                   </Card>
                 );
               })}
@@ -386,7 +541,11 @@ export function BrowseDocuments() {
                     onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}
                   >
                     <Table.Td>
-                      {item.type === 'folder' ? <IconFolder size={18} /> : <IconFile size={18} />}
+                      {item.type === 'folder' ? (
+                        <IconFolder size={18} />
+                      ) : (
+                        getFileIcon((item as S3File).name, 18)
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text>
@@ -398,38 +557,49 @@ export function BrowseDocuments() {
                     </Table.Td>
                     <Table.Td>
                       {item.type === 'folder' ? (
-                        <Badge variant="light" color="gray">
-                          —
-                        </Badge>
+                        <Badge variant="light" color="gray">—</Badge>
                       ) : (
                         <Badge variant="light" color="yellow">
-                          {formatSize(item.size)}
+                          {formatSize((item as S3File).size)}
                         </Badge>
                       )}
                     </Table.Td>
                     <Table.Td>
                       {item.type === 'folder' ? (
-                        <Badge variant="light" color="gray">
-                          —
-                        </Badge>
+                        <Badge variant="light" color="gray">—</Badge>
                       ) : (
                         <Badge variant="light" color="gray">
-                          {formatDate(item.last_modified)}
+                          {formatDate((item as S3File).last_modified)}
                         </Badge>
                       )}
                     </Table.Td>
                     <Table.Td>
                       {item.type === 'file' && (
-                        <Button
-                          size="xs"
-                          variant="light"
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent folder click
-                            setSelectedFile(item);
-                          }}
-                        >
-                          View / Download
-                        </Button>
+                        <Group gap="xs">
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="violet"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedFile(item as S3File);
+                            }}
+                          >
+                            View
+                          </Button>
+
+                          <ActionIcon
+                            variant="light"
+                            color="red"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete((item as S3File).key, item.name);
+                            }}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
                       )}
                     </Table.Td>
                   </Table.Tr>
@@ -457,7 +627,7 @@ export function BrowseDocuments() {
               leftSection={<IconDownload size={18} />}
               onClick={() => {
                 if (!selectedFile) return;
-                const url = `${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${BUCKET_NAME}`;
+                const url = `${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`;
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = selectedFile.name;
@@ -490,7 +660,7 @@ export function BrowseDocuments() {
               if (previewContent === 'iframe' || type === 'pdf' || type === 'other') {
                 return (
                   <iframe
-                    src={`${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${BUCKET_NAME}`}
+                    src={`${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`}
                     style={{
                       width: '100%',
                       height: '100%',
@@ -510,8 +680,8 @@ export function BrowseDocuments() {
                         dangerouslySetInnerHTML={{ __html: wordHtml }}
                         style={{
                           padding: '2rem',
-                          background: 'var(--mantine-color-body)', 
-                          color: 'var(--mantine-color-text)',      
+                          background: 'var(--mantine-color-body)',
+                          color: 'var(--mantine-color-text)',
                           borderRadius: 'var(--mantine-radius-md)',
                           minHeight: '100%',
                         }}
