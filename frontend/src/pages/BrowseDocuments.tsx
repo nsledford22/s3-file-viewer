@@ -19,7 +19,8 @@ import {
   Stack,
   ScrollArea,
   Breadcrumbs,
-  Anchor
+  Anchor,
+  Slider
 } from '@mantine/core';
 import {
   IconLayoutGrid,
@@ -72,6 +73,7 @@ export function BrowseDocuments() {
   const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'error'>('loading');
   const [wordHtml, setWordHtml] = useState<string>('');
   const [sheetData, setSheetData] = useState<any[][]>([]);
+  const [density, setDensity] = useState(4);
 
   // Build proper breadcrumbs from currentPrefix
   const breadcrumbItems = currentPrefix
@@ -218,21 +220,32 @@ export function BrowseDocuments() {
 
   return (
     <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
-      {/* Functional Breadcrumbs */}
-      <Breadcrumbs separator={<IconChevronRight size={16} />} mb="lg">
-        <Anchor onClick={() => navigateToPrefix('files/')} style={{ cursor: 'pointer' }}>
-          Home
-        </Anchor>
-        {breadcrumbItems.map((item) => (
-          <Anchor
-            key={item.prefix}
-            onClick={() => navigateToPrefix(item.prefix)}
-            style={{ cursor: 'pointer' }}
-          >
-            {item.title}
+      {/* Breadcrumbs + View Switch (inline) */}
+      <Group justify="space-between" align="center" mb="lg" wrap="nowrap">
+        <Breadcrumbs separator={<IconChevronRight size={16} />}>
+          <Anchor onClick={() => navigateToPrefix('files/')} style={{ cursor: 'pointer' }}>
+            Home
           </Anchor>
-        ))}
-      </Breadcrumbs>
+          {breadcrumbItems.map((item) => (
+            <Anchor
+              key={item.prefix}
+              onClick={() => navigateToPrefix(item.prefix)}
+              style={{ cursor: 'pointer' }}
+            >
+              {item.title}
+            </Anchor>
+          ))}
+        </Breadcrumbs>
+
+        <Group gap="xs" align="center">
+          <Text size="sm" fw={500}>View:</Text>
+          <Switch
+            checked={viewMode === 'table'}
+            onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
+            thumbIcon={viewMode === 'table' ? <IconTable size={16} /> : <IconLayoutGrid size={16} />}
+          />
+        </Group>
+      </Group>
 
       {/* Header */}
       <Group justify="space-between" align="center" mb="xl" wrap="wrap">
@@ -247,21 +260,43 @@ export function BrowseDocuments() {
             w={350}
           />
 
-          <Group gap="xs">
-            <Text fw={500}>View:</Text>
-            <Switch
-              checked={viewMode === 'table'}
-              onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
-              thumbIcon={viewMode === 'table' ? <IconTable size={16} /> : <IconLayoutGrid size={16} />}
+          {/* Card Size Slider */}
+          <Group gap="xs" align="center">
+            <Text size="sm" fw={500}>Card size:</Text>
+            <Slider
+              min={3}
+              max={6}
+              step={1}
+              value={density}
+              onChange={setDensity}
+              marks={[
+                { value: 3, label: 'Spacious' },
+                { value: 4, label: 'Normal' },
+                { value: 5, label: 'Compact' },
+                { value: 6, label: 'Dense' },
+              ]}
+              w={220}
             />
           </Group>
         </Group>
       </Group>
 
-      {/* Current location */}
-      <Text size="sm" c="dimmed" mb="md">
-        Location: <strong>{currentPrefix === 'files/' ? '/' : currentPrefix}</strong>
-      </Text>
+      {/* Current location & Pagination */}
+      <Group justify="space-between" align="center" mb="xl" wrap="nowrap">
+        <Text size="sm" c="dimmed">
+          Location: <strong>{currentPrefix === 'files/' ? '/' : currentPrefix}</strong>
+        </Text>
+
+        {totalPages > 1 && (
+          <Pagination
+            total={totalPages}
+            value={currentPage}
+            onChange={setCurrentPage}
+            withEdges
+            color="violet"
+          />
+        )}
+      </Group>
 
       {/* Content Grid */}
       {totalItems === 0 ? (
@@ -271,7 +306,10 @@ export function BrowseDocuments() {
       ) : (
         <>
           {viewMode === 'cards' ? (
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg">
+            <SimpleGrid
+              cols={{ base: density, sm: density, md: density, lg: density }}
+              spacing={density <= 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
+            >
               {paginatedItems.map((item) => {
                 if (item.type === 'folder') {
                   return (
@@ -298,7 +336,12 @@ export function BrowseDocuments() {
                 }
 
                 return (
-                  <Card key={item.key} withBorder shadow="sm" padding="lg" radius="md">
+                  <Card
+                    padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
+                    radius="md"
+                    withBorder
+                    shadow="sm"
+                  >
                     <Group align="center" gap="xs" mb="xs">
                       <IconFile size={20} color="gray" />
                       <Text fw={500} truncate="end" maw={260}>
@@ -320,7 +363,11 @@ export function BrowseDocuments() {
               })}
             </SimpleGrid>
           ) : (
-            <Table highlightOnHover verticalSpacing="md">
+            <Table
+              highlightOnHover
+              verticalSpacing={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
+              horizontalSpacing={density >= 6 ? 'xs' : 'md'}
+            >
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Type</Table.Th>
@@ -389,12 +436,6 @@ export function BrowseDocuments() {
                 ))}
               </Table.Tbody>
             </Table>
-          )}
-
-          {totalPages > 1 && (
-            <Group justify="center" mt="xl">
-              <Pagination total={totalPages} value={currentPage} onChange={setCurrentPage} withEdges />
-            </Group>
           )}
         </>
       )}
