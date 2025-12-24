@@ -18,15 +18,23 @@ import {
   Drawer,
   Stack,
   ScrollArea,
+  Breadcrumbs,
+  Anchor
 } from '@mantine/core';
-import { IconLayoutGrid, IconTable, IconSearch, IconDownload } from '@tabler/icons-react';
+import {
+  IconLayoutGrid,
+  IconTable,
+  IconSearch,
+  IconDownload,
+  IconFolder,
+  IconFile,
+  IconChevronRight,
+} from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
-import modules from './BrowseDocuments.module.css';
 
-const ITEMS_PER_PAGE = 9;
+const ITEMS_PER_PAGE = 12;
 const BUCKET_NAME = 's3-file-viewer-files';
-const PREFIX = 'files/';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 interface S3File {
@@ -36,7 +44,11 @@ interface S3File {
   last_modified: string;
 }
 
-// File type detection
+interface S3Folder {
+  key: string; // ends with '/'
+  name: string;
+}
+
 const getFileType = (filename: string): 'pdf' | 'docx' | 'doc' | 'excel' | 'csv' | 'other' => {
   const ext = filename.toLowerCase().split('.').pop() || '';
   if (ext === 'pdf') return 'pdf';
@@ -51,7 +63,9 @@ export function BrowseDocuments() {
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [documents, setDocuments] = useState<S3File[]>([]);
+  const [files, setFiles] = useState<S3File[]>([]);
+  const [folders, setFolders] = useState<S3Folder[]>([]);
+  const [currentPrefix, setCurrentPrefix] = useState('files/');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<S3File | null>(null);
@@ -59,7 +73,23 @@ export function BrowseDocuments() {
   const [wordHtml, setWordHtml] = useState<string>('');
   const [sheetData, setSheetData] = useState<any[][]>([]);
 
-  // Reset preview when file changes
+  // Build proper breadcrumbs from currentPrefix
+  const breadcrumbItems = currentPrefix
+    .split('/')
+    .filter(Boolean)
+    .reduce((acc: { title: string; prefix: string }[], part, index, arr) => {
+      const prefix = arr.slice(0, index + 1).join('/') + '/';
+      acc.push({ title: part, prefix });
+      return acc;
+    }, []);
+
+  const navigateToPrefix = (prefix: string) => {
+    setCurrentPrefix(prefix);
+    setCurrentPage(1);
+    setSearchQuery('');
+  };
+
+  // Reset preview
   useEffect(() => {
     if (selectedFile) {
       setPreviewContent('loading');
@@ -68,37 +98,45 @@ export function BrowseDocuments() {
     }
   }, [selectedFile]);
 
-  // Fetch file list
+  // Fetch files and folders
   useEffect(() => {
-    const fetchFiles = async () => {
+    const fetchContents = async () => {
       try {
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `${API_BASE_URL}/list_files?bucket_name=${BUCKET_NAME}&prefix=${PREFIX}`
+          `${API_BASE_URL}/list_files?bucket_name=${BUCKET_NAME}&prefix=${encodeURIComponent(currentPrefix)}`
         );
-        if (!response.ok) throw new Error('Failed to fetch files');
+        if (!response.ok) throw new Error('Failed to fetch contents');
         const data = await response.json();
-        setDocuments(data.files || []);
+
+        setFiles(data.files || []);
+        setFolders(data.folders || []); // Backend must return folders array
       } catch (err: any) {
-        setError(err.message || 'Unable to load documents');
+        setError(err.message || 'Unable to load folder contents');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchFiles();
-  }, []);
+    fetchContents();
+  }, [currentPrefix]);
 
-  // Filtering & pagination
-  const filteredDocuments = documents.filter((doc) =>
-    doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Combine files and folders for display and search
+  const allItems = [
+    ...folders.map(f => ({ ...f, type: 'folder' as const })),
+    ...files.map(f => ({ ...f, type: 'file' as const })),
+  ];
+
+  const filteredItems = allItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ('key' in item && item.key.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const totalItems = filteredDocuments.length;
+  const totalItems = filteredItems.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedDocuments = filteredDocuments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedItems = filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -106,7 +144,7 @@ export function BrowseDocuments() {
   };
 
   const formatSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return '—';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -121,7 +159,6 @@ export function BrowseDocuments() {
     });
   };
 
-  // Load and render file content
   const loadFilePreview = async (file: S3File) => {
     try {
       const response = await fetch(
@@ -155,18 +192,15 @@ export function BrowseDocuments() {
     }
   };
 
-  // Trigger preview load when file selected
   useEffect(() => {
-    if (selectedFile) {
-      loadFilePreview(selectedFile);
-    }
+    if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
 
   if (loading) {
     return (
       <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
         <Center h="60vh">
-          <Loader size="lg" color="violet" />
+          <Loader size="lg" />
         </Center>
       </Container>
     );
@@ -184,81 +218,172 @@ export function BrowseDocuments() {
 
   return (
     <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
+      {/* Functional Breadcrumbs */}
+      <Breadcrumbs separator={<IconChevronRight size={16} />} mb="lg">
+        <Anchor onClick={() => navigateToPrefix('files/')} style={{ cursor: 'pointer' }}>
+          Home
+        </Anchor>
+        {breadcrumbItems.map((item) => (
+          <Anchor
+            key={item.prefix}
+            onClick={() => navigateToPrefix(item.prefix)}
+            style={{ cursor: 'pointer' }}
+          >
+            {item.title}
+          </Anchor>
+        ))}
+      </Breadcrumbs>
+
       {/* Header */}
       <Group justify="space-between" align="center" mb="xl" wrap="wrap">
         <Title order={1}>Browse Documents</Title>
 
         <Group gap="md">
           <TextInput
-            placeholder="Search by file name..."
+            placeholder="Search files or folders..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            w={300}
-            classNames={{ input: modules.inputField }}
+            w={350}
           />
 
           <Group gap="xs">
-            <Text fw={500}>View as:</Text>
+            <Text fw={500}>View:</Text>
             <Switch
-              size="md"
-              color="violet"
               checked={viewMode === 'table'}
               onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
-              thumbIcon={
-                viewMode === 'table' ? <IconTable size={16} /> : <IconLayoutGrid size={16} />
-              }
+              thumbIcon={viewMode === 'table' ? <IconTable size={16} /> : <IconLayoutGrid size={16} />}
             />
           </Group>
         </Group>
       </Group>
 
-      {/* List / Grid */}
+      {/* Current location */}
+      <Text size="sm" c="dimmed" mb="md">
+        Location: <strong>{currentPrefix === 'files/' ? '/' : currentPrefix}</strong>
+      </Text>
+
+      {/* Content Grid */}
       {totalItems === 0 ? (
         <Text ta="center" c="dimmed" size="lg" py="xl">
-          No documents found.
+          This folder is empty.
         </Text>
       ) : (
         <>
           {viewMode === 'cards' ? (
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
-              {paginatedDocuments.map((doc) => (
-                <Card key={doc.key} withBorder shadow="sm" padding="lg" radius="md">
-                  <Text fw={500} mb="xs" truncate="end" maw={300}>
-                    {doc.name}
-                  </Text>
-                  <Group gap="xs" mb="md">
-                    <Badge variant="light" color="violet">{formatSize(doc.size)}</Badge>
-                    <Badge variant="light" color="gray">{formatDate(doc.last_modified)}</Badge>
-                  </Group>
-                  <Button fullWidth variant="light" color="violet" onClick={() => setSelectedFile(doc)}>
-                    View / Download
-                  </Button>
-                </Card>
-              ))}
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg">
+              {paginatedItems.map((item) => {
+                if (item.type === 'folder') {
+                  return (
+                    <Card
+                      key={item.key}
+                      withBorder
+                      shadow="sm"
+                      padding="lg"
+                      radius="md"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigateToPrefix(item.key)}
+                    >
+                      <Group align="center" gap="md">
+                        <IconFolder size={40} color="#7950f2" />
+                        <Text fw={600} size="lg">
+                          {item.name}
+                        </Text>
+                      </Group>
+                      <Text size="sm" c="dimmed" mt="xs">
+                        Folder
+                      </Text>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <Card key={item.key} withBorder shadow="sm" padding="lg" radius="md">
+                    <Group align="center" gap="xs" mb="xs">
+                      <IconFile size={20} color="gray" />
+                      <Text fw={500} truncate="end" maw={260}>
+                        {item.name}
+                      </Text>
+                    </Group>
+                    <Text size="xs" c="dimmed" truncate>
+                      {item.key}
+                    </Text>
+                    <Group gap="xs" mb="md" mt="sm">
+                      <Badge variant="light" color="yellow">{formatSize(item.size)}</Badge>
+                      <Badge variant="light" color="gray">{formatDate(item.last_modified)}</Badge>
+                    </Group>
+                    <Button fullWidth variant="light" onClick={() => setSelectedFile(item)}>
+                      View / Download
+                    </Button>
+                  </Card>
+                );
+              })}
             </SimpleGrid>
           ) : (
             <Table highlightOnHover verticalSpacing="md">
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th>Type</Table.Th>
                   <Table.Th>Name</Table.Th>
+                  <Table.Th>Full Path</Table.Th>
                   <Table.Th>Size</Table.Th>
                   <Table.Th>Date</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {paginatedDocuments.map((doc) => (
-                  <Table.Tr key={doc.key}>
+                {paginatedItems.map((item) => (
+                  <Table.Tr
+                    key={item.key}
+                    style={item.type === 'folder' ? { cursor: 'pointer' } : {}}
+                    onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}
+                  >
                     <Table.Td>
-                      <Text truncate="end" maw={400}>{doc.name}</Text>
+                      {item.type === 'folder' ? <IconFolder size={18} /> : <IconFile size={18} />}
                     </Table.Td>
-                    <Table.Td>{formatSize(doc.size)}</Table.Td>
-                    <Table.Td>{formatDate(doc.last_modified)}</Table.Td>
                     <Table.Td>
-                      <Button size="xs" variant="light" color="violet" onClick={() => setSelectedFile(doc)}>
-                        View / Download
-                      </Button>
+                      <Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c="dimmed" truncate="end" maw={400}>
+                        {item.key}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {item.type === 'folder' ? (
+                        <Badge variant="light" color="gray">
+                          —
+                        </Badge>
+                      ) : (
+                        <Badge variant="light" color="yellow">
+                          {formatSize(item.size)}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {item.type === 'folder' ? (
+                        <Badge variant="light" color="gray">
+                          —
+                        </Badge>
+                      ) : (
+                        <Badge variant="light" color="gray">
+                          {formatDate(item.last_modified)}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {item.type === 'file' && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent folder click
+                            setSelectedFile(item);
+                          }}
+                        >
+                          View / Download
+                        </Button>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -268,13 +393,7 @@ export function BrowseDocuments() {
 
           {totalPages > 1 && (
             <Group justify="center" mt="xl">
-              <Pagination
-                total={totalPages}
-                value={currentPage}
-                onChange={setCurrentPage}
-                color="violet"
-                withEdges
-              />
+              <Pagination total={totalPages} value={currentPage} onChange={setCurrentPage} withEdges />
             </Group>
           )}
         </>
@@ -285,17 +404,15 @@ export function BrowseDocuments() {
         opened={!!selectedFile}
         onClose={() => setSelectedFile(null)}
         position="bottom"
-        size="80%"
+        size="85%"
         title={`Viewing: ${selectedFile?.name || 'File'}`}
         overlayProps={{ opacity: 0.5, blur: 4 }}
         padding="md"
       >
         <Stack h="100%" gap="md">
-          {/* Top bar with download button */}
           <Group justify="space-between" align="center">
             <Text fw={600} size="lg">File Preview</Text>
             <Button
-              color="violet"
               leftSection={<IconDownload size={18} />}
               onClick={() => {
                 if (!selectedFile) return;
@@ -310,9 +427,7 @@ export function BrowseDocuments() {
             </Button>
           </Group>
 
-          {/* Preview Area */}
           <Stack flex={1} pos="relative" style={{ minHeight: 0 }}>
-            {/* Loading overlay */}
             <Center
               pos="absolute"
               inset={0}
@@ -323,10 +438,9 @@ export function BrowseDocuments() {
                 borderRadius: 'var(--mantine-radius-md)',
               }}
             >
-              <Loader size="xl" color="violet" variant="dots" />
+              <Loader size="xl" variant="dots" />
             </Center>
 
-            {/* Render based on file type */}
             {(() => {
               if (!selectedFile) return null;
 
@@ -355,15 +469,14 @@ export function BrowseDocuments() {
                         dangerouslySetInnerHTML={{ __html: wordHtml }}
                         style={{
                           padding: '2rem',
-                          background: 'white',
+                          background: 'var(--mantine-color-body)', 
+                          color: 'var(--mantine-color-text)',      
                           borderRadius: 'var(--mantine-radius-md)',
+                          minHeight: '100%',
                         }}
                       />
                     </ScrollArea>
                   );
-                }
-                if (previewContent === 'loading') {
-                  return null;
                 }
                 return (
                   <Center h="100%">
@@ -388,7 +501,6 @@ export function BrowseDocuments() {
               }
 
               if ((type === 'excel' || type === 'csv') && previewContent === 'spreadsheet' && sheetData.length > 0) {
-                // Normalize rows to prevent column misalignment
                 const headerCount = sheetData[0]?.length || 0;
                 const normalizedData = sheetData.map(row => {
                   const padded = [...row];

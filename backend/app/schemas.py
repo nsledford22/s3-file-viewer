@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 class HealthSchema(BaseModel):
     status: str
@@ -24,5 +24,11 @@ class S3File(BaseModel):
     size: int              
     last_modified: datetime  
 
+class S3Folder(BaseModel):
+    key: str        
+    name: str       
+
 class S3FileListSchema(BaseModel):
-    files: List[S3File]
+    files: List[S3File] = []
+    folders: List[S3Folder] = []
+    current_prefix: Optional[str] = None

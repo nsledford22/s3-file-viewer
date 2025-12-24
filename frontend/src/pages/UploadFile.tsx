@@ -6,6 +6,7 @@ import {
   IconX,
   IconCheck,
   IconUpload,
+  IconFolder,
 } from '@tabler/icons-react';
 import {
   Button,
@@ -17,6 +18,7 @@ import {
   Progress,
   Alert,
   Loader,
+  TextInput,
 } from '@mantine/core';
 import { Dropzone, MIME_TYPES } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
@@ -31,6 +33,7 @@ export function UploadFile() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<number>(0);
   const [currentFiles, setCurrentFiles] = useState<File[]>([]);
+  const [customPath, setCustomPath] = useState(''); // e.g., "reports/2025/" or "invoices/"
 
   const handleUpload = async (files: File[]) => {
     if (files.length === 0) return;
@@ -43,11 +46,15 @@ export function UploadFile() {
     const totalFiles = files.length;
 
     for (const file of files) {
+      // Build full S3 key: trim slashes + add filename
+      const cleanPath = customPath.trim().replace(/\/+$/, '');
+      const key = cleanPath ? `${cleanPath}/${file.name}` : file.name;
+
       const formData = new FormData();
       formData.append('file', file);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/upload_file/`, {
+        const response = await fetch(`${API_BASE_URL}/upload_file/?key=${encodeURIComponent(key)}`, {
           method: 'POST',
           body: formData,
         });
@@ -62,7 +69,7 @@ export function UploadFile() {
 
         notifications.show({
           title: 'Success',
-          message: `${file.name} uploaded successfully`,
+          message: `${file.name} → ${key}`,
           color: 'teal',
           icon: <IconCheck size={18} />,
         });
@@ -80,15 +87,26 @@ export function UploadFile() {
     setUploading(false);
     setProgress(0);
     setCurrentFiles([]);
+    setCustomPath(''); // Reset after upload
   };
 
   return (
     <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
       <Flex direction="column" align="center" justify="center" gap="xl" mih="60vh">
+        {/* Custom Path Input */}
+        <TextInput
+          placeholder="Optional: folder/path/ (e.g., reports/2025/)"
+          value={customPath}
+          onChange={(e) => setCustomPath(e.currentTarget.value)}
+          leftSection={<IconFolder size={18} />}
+          w={400}
+          disabled={uploading}
+          description="Files will be uploaded to this path in S3"
+        />
+
         <Dropzone
           openRef={openRef}
           onDrop={handleUpload}
-          // Removed loading={uploading} → no more blur overlay
           multiple={true}
           className={classes.dropzone}
           radius="md"
@@ -116,7 +134,7 @@ export function UploadFile() {
 
             <Text ta="center" fw={700} fz="lg" mt="xl">
               <Dropzone.Accept>Drop files here</Dropzone.Accept>
-              <Dropzone.Reject>File type not allowed or too large</Dropzone.Reject>
+              <Dropzone.Reject>File not allowed or too large</Dropzone.Reject>
               <Dropzone.Idle>Upload File(s)</Dropzone.Idle>
             </Text>
 
@@ -137,7 +155,6 @@ export function UploadFile() {
           {uploading ? 'Uploading...' : 'Select files'}
         </Button>
 
-        {/* Clean, single progress indicator */}
         {uploading && (
           <Alert
             icon={<IconUpload size={20} />}
