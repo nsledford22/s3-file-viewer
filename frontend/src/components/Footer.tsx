@@ -3,7 +3,8 @@ import {
   IconBrandGithub,
   IconBrandMantine,
   IconBrandPython,
-  IconBrandAws
+  IconBrandAws,
+  IconBrandReact
 } from '@tabler/icons-react';
 
 export function Footer() {
@@ -40,14 +41,7 @@ export function Footer() {
             variant="subtle" 
             title="React"
         >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="none">
-                <circle cx="128" cy="128" r="30" fill="#61DAFB"/>
-                <g stroke="#61DAFB" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round">
-                    <ellipse rx="96" ry="36" transform="matrix(.866 -.5 .5 .866 128 128)"/>
-                    <ellipse rx="96" ry="36" transform="matrix(.866 .5 -.5 .866 128 128)"/>
-                    <ellipse rx="96" ry="36" transform="matrix(0 -1 1 0 128 128)"/>
-                </g>
-            </svg>
+            <IconBrandReact size={20} color="#61DAFB" stroke={1.5} />
         </ActionIcon>
 
         <ActionIcon 
