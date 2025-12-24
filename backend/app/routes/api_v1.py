@@ -6,11 +6,12 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import mimetypes
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["api_v1"])
 
+router = APIRouter(prefix="/api/v1", tags=["api_v1"])
 
 @router.post("/echo", response_model=ReceivedSchema)
 def echo(payload: EchoSchema):
@@ -20,6 +21,17 @@ def echo(payload: EchoSchema):
 @router.get("/config", response_model=ConfigSchema)
 def config():
     return {"ENV": settings.ENV, "DEBUG": settings.DEBUG}
+
+@router.get("/list_buckets")
+def list_buckets():
+    try:
+        s3_client = boto3.client('s3')
+        response = s3_client.list_buckets()
+        buckets = [bucket['Name'] for bucket in response['Buckets']]
+        return {"buckets": sorted(buckets)}
+    except ClientError as e:
+        logger.error(f"Failed to list buckets: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list S3 buckets")
 
 @router.get(
     "/list_files",
@@ -216,4 +228,117 @@ async def upload_file(
         raise HTTPException(status_code=500, detail="Failed to upload file to S3")
     except Exception as e:
         logger.error(f"Unexpected error during upload of '{original_filename}': {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
+@router.delete("/delete_file/")
+async def delete_file(
+    key: str = Query(..., description="Full S3 key of the file to delete (e.g., 'files/reports/report.pdf')"),
+    bucket_name: str = "s3-file-viewer-files"
+):
+    if not key:
+        raise HTTPException(status_code=400, detail="File key is required")
+
+    # Optional: basic security - ensure key starts with 'files/'
+    if not key.startswith("files/"):
+        raise HTTPException(status_code=400, detail="Invalid key: must be under 'files/'")
+
+    s3_client = boto3.client('s3')
+
+    try:
+        s3_client.delete_object(Bucket=bucket_name, Key=key)
+        return {"message": "File deleted successfully", "key": key}
+    except ClientError as e:
+        error_code = e.response['Error'].get('Code', 'Unknown')
+        if error_code == 'NoSuchKey':
+            raise HTTPException(status_code=404, detail="File not found")
+        logger.error(f"Failed to delete {key}: {error_code}")
+        raise HTTPException(status_code=500, detail="Failed to delete file")
+    except Exception as e:
+        logger.error(f"Unexpected error deleting {key}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/cloudwatch/log_groups")
+def list_log_groups():
+    try:
+        logs_client = boto3.client('logs')
+        response = logs_client.describe_log_groups()
+        groups = [g['logGroupName'] for g in response['logGroups']]
+        return {"log_groups": sorted(groups)}
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list log groups: {e}")
+
+@router.get("/cloudwatch/log_streams")
+def list_log_streams(
+    log_group: str = Query(..., description="Log group name (can contain '/')")
+):
+    try:
+        logs_client = boto3.client('logs')
+        response = logs_client.describe_log_streams(
+            logGroupName=log_group,
+            orderBy='LastEventTime',
+            descending=True,
+            limit=50
+        )
+        streams = [s['logStreamName'] for s in response['logStreams']]
+        return {"log_streams": streams}
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/cloudwatch/logs")
+def get_logs(
+    log_group: str = Query(..., description="CloudWatch log group name (can contain '/')"),
+    log_stream: str = Query(..., description="CloudWatch log stream name"),
+    start_time: int | None = Query(None, description="Start time in milliseconds since epoch"),
+    end_time: int | None = Query(None, description="End time in milliseconds since epoch"),
+    limit: int = Query(1000, ge=1, le=10000, description="Max number of log events to return (1-10000)")
+):
+    """
+    Fetch log events from a specific CloudWatch Logs stream.
+    Uses query parameters to safely handle log group names containing '/'.
+    """
+    if not log_group or not log_stream:
+        raise HTTPException(status_code=400, detail="log_group and log_stream are required")
+
+    kwargs = {
+        'logGroupName': log_group,
+        'logStreamName': log_stream,
+        'limit': limit,
+        'startFromHead': True
+    }
+
+    if start_time is not None:
+        kwargs['startTime'] = start_time
+    if end_time is not None:
+        kwargs['endTime'] = end_time
+
+    try:
+        logs_client = boto3.client('logs')
+        response = logs_client.get_log_events(**kwargs)
+
+        events = [
+            {
+                "timestamp": datetime.fromtimestamp(e['timestamp'] / 1000, tz=timezone.utc).isoformat(),
+                "message": e['message'].rstrip('\n')
+            }
+            for e in response['events']
+        ]
+
+        # Sort by timestamp ascending (CloudWatch doesn't guarantee order)
+        events.sort(key=lambda x: x['timestamp'])
+
+        return {"events": events}
+
+    except ClientError as e:
+        error_code = e.response['Error'].get('Code')
+        error_message = e.response['Error'].get('Message', str(e))
+
+        if error_code == 'ResourceNotFoundException':
+            raise HTTPException(status_code=404, detail="Log group or stream not found")
+        elif error_code == 'AccessDeniedException':
+            raise HTTPException(status_code=403, detail="Access denied to CloudWatch logs")
+        else:
+            logger.error(f"CloudWatch logs fetch failed: {error_code} - {error_message}")
+            raise HTTPException(status_code=500, detail="Failed to fetch logs")
+    except Exception as e:
+        logger.exception("Unexpected error fetching CloudWatch logs")
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -4,6 +4,7 @@ import {
   IconFileSearch,
   IconHome,
   IconFileUpload,
+  IconCloudNetwork,
 } from '@tabler/icons-react';
 import { Code, Group, NavLink } from '@mantine/core';
 import classes from './Navbar.module.css';
@@ -12,6 +13,7 @@ const data = [
   { path: '/', label: 'Home', icon: IconHome },
   { path: '/browse', label: 'Browse Documents', icon: IconFileSearch },
   { path: '/upload', label: 'Upload File(s)', icon: IconFileUpload },
+  { path: '/cloudwatch-logs', label: 'CloudWatch Logs', icon: IconCloudNetwork },
 ];
 
 export function Navbar() {
