@@ -293,7 +293,6 @@ export function BrowseDocuments() {
             value={currentPage}
             onChange={setCurrentPage}
             withEdges
-            color="violet"
           />
         )}
       </Group>
@@ -323,7 +322,8 @@ export function BrowseDocuments() {
                       onClick={() => navigateToPrefix(item.key)}
                     >
                       <Group align="center" gap="md">
-                        <IconFolder size={40} color="#7950f2" />
+                        <IconFolder size={40} color='#cc5de8	
+' />
                         <Text fw={600} size="lg">
                           {item.name}
                         </Text>
