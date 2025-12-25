@@ -5,21 +5,24 @@ import {
   Title,
   Group,
   Loader,
-  Alert,
-  Progress,
   TextInput,
   Select,
   SegmentedControl,
   Center,
   Stack,
-  Text
+  Text,
+  Breadcrumbs,
+  Anchor,
+  ActionIcon,
+  Progress
 } from '@mantine/core';
 import { Dropzone, MIME_TYPES } from '@mantine/dropzone';
 import {
   IconCloudUpload,
   IconFolder,
   IconFolderPlus,
-  IconUpload,
+  IconChevronRight,
+  IconBucket as IconS3
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 
@@ -37,17 +40,29 @@ export function UploadFile() {
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [bucketsLoading, setBucketsLoading] = useState(true);
 
-  // Folder selection mode
+  // Folder browsing state
+  const [currentPrefix, setCurrentPrefix] = useState('');
+  const [folders, setFolders] = useState<string[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+
+  // Folder mode
   const [folderMode, setFolderMode] = useState<'existing' | 'new'>('existing');
-
-  // Existing folders
-  const [existingFolders, setExistingFolders] = useState<string[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-
-  // New folder input
   const [newFolderPath, setNewFolderPath] = useState('');
 
-  // Load buckets on mount
+  // Track previous uploading state for notification management
+  const [previousUploading, setPreviousUploading] = useState(false);
+
+  // Breadcrumb parts
+  const breadcrumbParts = currentPrefix
+    .split('/')
+    .filter(Boolean)
+    .reduce((acc: { title: string; prefix: string }[], part, index, arr) => {
+      const prefix = arr.slice(0, index + 1).join('/') + '/';
+      acc.push({ title: part, prefix });
+      return acc;
+    }, []);
+
+  // Load buckets
   useEffect(() => {
     const fetchBuckets = async () => {
       setBucketsLoading(true);
@@ -57,9 +72,7 @@ export function UploadFile() {
         const data = await res.json();
         const bucketList = data.buckets || [];
         setBuckets(bucketList);
-        if (bucketList.length > 0) {
-          setSelectedBucket(bucketList[0]);
-        }
+        // No auto-selection — user must choose explicitly
       } catch {
         notifications.show({
           title: 'Error',
@@ -73,35 +86,55 @@ export function UploadFile() {
     fetchBuckets();
   }, []);
 
-  // Load folders when bucket changes
+  // Load folders when bucket or prefix changes
   useEffect(() => {
     if (!selectedBucket) {
-      setExistingFolders([]);
-      setSelectedFolder(null);
+      setFolders([]);
+      setCurrentPrefix('');
       return;
     }
 
     const fetchFolders = async () => {
+      setLoadingFolders(true);
       try {
         const res = await fetch(
-          `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket)}&prefix=`
+          `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket)}&prefix=${encodeURIComponent(currentPrefix)}`
         );
         if (!res.ok) throw new Error();
         const data = await res.json();
-        const folders = (data.folders || []).map((f: { key: string }) => f.key);
-        setExistingFolders(folders);
+        const folderKeys = (data.folders || []).map((f: { key: string }) => f.key);
+        const subFolders = folderKeys.map((key: string) =>
+          key.slice(currentPrefix.length).replace(/\/$/, '')
+        );
+        setFolders(subFolders);
       } catch {
         notifications.show({
           title: 'Error',
           message: 'Failed to load folders',
           color: 'red',
         });
-        setExistingFolders([]);
+        setFolders([]);
+      } finally {
+        setLoadingFolders(false);
       }
     };
 
     fetchFolders();
-  }, [selectedBucket]);
+  }, [selectedBucket, currentPrefix]);
+
+  const navigateToFolder = (prefix: string) => {
+    setCurrentPrefix(prefix);
+    setFolderMode('existing');
+  };
+
+  const getUploadPath = () => {
+    if (folderMode === 'existing') {
+      return currentPrefix;
+    }
+    const base = currentPrefix;
+    const newPart = newFolderPath.trim().replace(/\/+$/, '');
+    return newPart ? `${base}${newPart}/` : base;
+  };
 
   const handleUpload = async (files: File[]) => {
     if (files.length === 0 || !selectedBucket) return;
@@ -110,15 +143,12 @@ export function UploadFile() {
     setProgress(0);
     setCurrentFiles(files);
 
+    const basePath = getUploadPath();
     let uploadedCount = 0;
     const totalFiles = files.length;
 
-    const basePath = folderMode === 'existing'
-      ? (selectedFolder || '')
-      : newFolderPath.trim().replace(/\/+$/, '');
-
     for (const file of files) {
-      const key = basePath ? `${basePath}/${file.name}` : file.name;
+      const key = basePath ? `${basePath}${file.name}` : file.name;
 
       const formData = new FormData();
       formData.append('file', file);
@@ -158,11 +188,56 @@ export function UploadFile() {
     setUploading(false);
     setProgress(0);
     setCurrentFiles([]);
-    setSelectedFolder(null);
     setNewFolderPath('');
   };
 
-  // Loading state while buckets load
+  // Manage upload progress notification
+  useEffect(() => {
+    if (uploading && !previousUploading) {
+      notifications.show({
+        id: 'upload-in-progress',
+        loading: true,
+        title: 'Uploading files...',
+        message: (
+          <Stack gap="xs" mt="md">
+            <Progress value={progress} animated striped />
+            <Text size="sm">
+              Processing {currentFiles.length} file(s) — {progress}% complete
+            </Text>
+            <Text size="xs">
+              Target: <strong>{getUploadPath() || '(bucket root)'}</strong>
+            </Text>
+          </Stack>
+        ),
+        autoClose: false,
+        withCloseButton: false,
+        color: 'violet',
+      });
+    } else if (!uploading && previousUploading) {
+      notifications.hide('upload-in-progress');
+    }
+
+    if (uploading) {
+      notifications.update({
+        id: 'upload-in-progress',
+        loading: true,
+        message: (
+          <Stack gap="xs" mt="md">
+            <Progress value={progress} animated striped />
+            <Text size="sm">
+              Processing {currentFiles.length} file(s) — {progress}% complete
+            </Text>
+            <Text size="xs">
+              Target: <strong>{getUploadPath() || '(bucket root)'}</strong>
+            </Text>
+          </Stack>
+        ),
+      });
+    }
+
+    setPreviousUploading(uploading);
+  }, [uploading, progress, currentFiles.length, previousUploading]);
+
   if (bucketsLoading) {
     return (
       <Container size="xl" py="xl">
@@ -187,70 +262,117 @@ export function UploadFile() {
       </Title>
 
       {/* Bucket Selector */}
-      <Group justify="center" mb="xl">
+      <Group justify="center" mb="lg">
         <Select
           placeholder="Select target bucket..."
           data={buckets}
           value={selectedBucket}
-          onChange={setSelectedBucket}
+          onChange={(value) => {
+            setSelectedBucket(value);
+            setCurrentPrefix('');
+          }}
           searchable
           w={400}
-          leftSection={<IconFolder size={18} />}
+          leftSection={<IconS3 size={18} />}
           disabled={uploading}
         />
       </Group>
 
       {selectedBucket && (
         <>
+          {/* Breadcrumb Navigation */}
+          <Center mb="lg">
+            <Breadcrumbs separator={<IconChevronRight size={16} />}>
+              <Anchor
+                onClick={() => setCurrentPrefix('')}
+                style={{ cursor: 'pointer' }}
+              >
+                <Group gap={4}>
+                  <IconS3 size={16} />
+                  {selectedBucket}
+                </Group>
+              </Anchor>
+              {breadcrumbParts.map((part) => (
+                <Anchor
+                  key={part.prefix}
+                  onClick={() => navigateToFolder(part.prefix)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {part.title}
+                </Anchor>
+              ))}
+            </Breadcrumbs>
+          </Center>
+
+          {/* Final Upload Path Display */}
+          <Center mb="md">
+            <Text size="sm" c="dimmed">
+              Uploading to:{' '}
+              <strong>{getUploadPath() || '(bucket root)'}</strong>
+            </Text>
+          </Center>
+
           {/* Folder Mode Toggle */}
           <Center mb="lg">
             <SegmentedControl
               value={folderMode}
               onChange={(value) => {
                 setFolderMode(value as 'existing' | 'new');
-                setSelectedFolder(null);
                 setNewFolderPath('');
               }}
               data={[
-                { label: 'Upload to Existing Folder', value: 'existing' },
-                { label: 'Create New Folder', value: 'new' },
+                { label: 'Upload to Current Folder', value: 'existing' },
+                { label: 'Create New Subfolder', value: 'new' },
               ]}
               w={500}
+              color="grape"
             />
           </Center>
 
-          {/* Folder Selection */}
-          <Group justify="center" mb="xl">
-            {folderMode === 'existing' ? (
-              <Select
-                placeholder="Choose folder (optional)"
-                data={existingFolders}
-                value={selectedFolder}
-                onChange={setSelectedFolder}
-                searchable
-                clearable
-                nothingFoundMessage="No folders found"
-                leftSection={<IconFolder size={18} />}
-                w={500}
-                disabled={uploading}
-                description="Leave empty to upload to bucket root"
-              />
-            ) : (
+          {/* New Folder Input */}
+          {folderMode === 'new' && (
+            <Group justify="center" mb="xl">
               <TextInput
-                placeholder="e.g., reports/2025/Q4/ or new-project/"
+                placeholder="e.g., invoices/december/ or reports/Q4/"
                 value={newFolderPath}
                 onChange={(e) => setNewFolderPath(e.currentTarget.value)}
                 leftSection={<IconFolderPlus size={18} />}
                 w={500}
                 disabled={uploading}
-                description="New folder will be created automatically"
+                description="Will be created inside current folder"
               />
-            )}
-          </Group>
+            </Group>
+          )}
+
+          {/* Subfolder Browser */}
+          {loadingFolders ? (
+            <Center my="lg">
+              <Loader />
+            </Center>
+          ) : folders.length > 0 ? (
+            <Center my="lg">
+              <Stack align="center" gap="sm">
+                <Text size="sm" c="dimmed">Subfolders in current location:</Text>
+                <Group gap="xs">
+                  {folders.map((folder) => (
+                    <ActionIcon
+                      key={folder}
+                      variant="light"
+                      w={120}
+                      onClick={() => navigateToFolder(currentPrefix + folder + '/')}
+                    >
+                      <IconFolder size={20} />
+                      <Text size="sm" ml={4}>{folder}</Text>
+                    </ActionIcon>
+                  ))}
+                </Group>
+              </Stack>
+            </Center>
+          ) : null}
         </>
       )}
 
-      {/* Dropzone with border (matching CloudWatch style) */}
+      {/* Dropzone */}
       <Center>
         <Dropzone
           openRef={openRef}
@@ -262,6 +384,8 @@ export function UploadFile() {
             MIME_TYPES.xlsx,
             MIME_TYPES.xls,
             MIME_TYPES.csv,
+            MIME_TYPES.docx,
+            MIME_TYPES.zip,
             'text/csv',
           ]}
           maxSize={50 * 1024 ** 2}
@@ -271,9 +395,10 @@ export function UploadFile() {
             maxWidth: 600,
             border: '2px dashed var(--mantine-color-gray-4)',
             borderRadius: 'var(--mantine-radius-md)',
-            backgroundColor: uploading ? 'var(--mantine-color-gray-1)' : undefined,
+            position: 'relative', // Needed for overlay
           }}
         >
+          {/* Default content */}
           <Group justify="center" gap="xl" style={{ pointerEvents: 'none' }} py={80}>
             <IconCloudUpload size={60} stroke={1.5} />
             <div>
@@ -281,31 +406,36 @@ export function UploadFile() {
                 Drag files here or click to upload
               </Text>
               <Text size="sm" c="dimmed" inline ta="center" mt={7}>
-                Accepts .pdf, .xlsx, .xls, .csv up to 50MB
+                Accepts .pdf, .xlsx, .xls, .csv, .docx, .zip up to 50MB
               </Text>
             </div>
           </Group>
+
+          {/* Custom clickable overlay (always active) */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'all', // Makes it clickable even when Dropzone is disabled
+              cursor: selectedBucket ? 'pointer' : 'not-allowed',
+            }}
+            onClick={() => {
+              if (!selectedBucket) {
+                notifications.show({
+                  id: 'no-bucket-warning',
+                  title: 'Bucket Required',
+                  message: 'Please select a bucket from the list before uploading files.',
+                  color: 'orange',
+                  autoClose: 5000,
+                });
+              } else {
+                // Safe to open file picker
+                openRef.current?.();
+              }
+            }}
+          />
         </Dropzone>
       </Center>
-
-      {/* Upload Progress */}
-      {uploading && (
-        <Center mt="xl">
-          <Alert
-            icon={<IconUpload size={20} />}
-            title="Uploading files..."
-            color="violet"
-            variant="light"
-            w="100%"
-            maw={600}
-          >
-            <Progress value={progress} animated striped mb="md" />
-            <Text size="sm" c="dimmed" ta="center">
-              Processing {currentFiles.length} file(s) — {progress}% complete
-            </Text>
-          </Alert>
-        </Center>
-      )}
     </Container>
   );
 }

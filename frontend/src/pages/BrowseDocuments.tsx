@@ -45,7 +45,10 @@ import {
   IconBrandTypescript,
   IconJson,
   IconFileText,
-  IconSql
+  IconSql,
+  IconFileTypeXml,
+  IconFileSearch,
+  IconBucket as IconS3
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -53,6 +56,7 @@ import SyntaxHighlighter from 'react-syntax-highlighter';
 import atomOneDark from 'react-syntax-highlighter/dist/esm/styles/hljs/atom-one-dark';
 import atomOneLight from 'react-syntax-highlighter/dist/esm/styles/hljs/atom-one-light';
 import { useMantineColorScheme } from '@mantine/core';
+import { useSearchParams } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -61,7 +65,7 @@ interface S3File {
   name: string;
   size: number;
   last_modified: string;
-  rawContent?: string; // For code files
+  rawContent?: string;
 }
 
 interface S3Folder {
@@ -76,7 +80,8 @@ const getFileType = (filename: string): 'pdf' | 'docx' | 'doc' | 'excel' | 'csv'
   if (ext === 'doc') return 'doc';
   if (['xlsx', 'xls'].includes(ext)) return 'excel';
   if (ext === 'csv') return 'csv';
-  if (['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'].includes(ext)) return 'code';
+  if (['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'].includes(ext))
+    return 'code';
   return 'other';
 };
 
@@ -94,8 +99,6 @@ const getFileIcon = (filename: string, size: number = 20) => {
     case 'docx':
     case 'doc':
       return <IconFileTypeDocx size={size} color="#00A2ED" />;
-
-    // Code/Text files
     case 'html':
     case 'htm':
       return <IconBrandHtml5 size={size} color="#E34F26" />;
@@ -117,6 +120,8 @@ const getFileIcon = (filename: string, size: number = 20) => {
       return <IconFileText size={size} color="#7950F2" />;
     case 'sql':
       return <IconSql size={size} color="#F29111" />;
+    case 'xml':
+      return <IconFileTypeXml size={size} color="#FF6600" />;
     default:
       return <IconFile size={size} color="gray" />;
   }
@@ -135,6 +140,8 @@ const getItemsPerPage = (density: number): number => {
 export function BrowseDocuments() {
   const { colorScheme } = useMantineColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,7 +163,92 @@ export function BrowseDocuments() {
 
   const itemsPerPage = getItemsPerPage(density);
 
-  // Load available buckets
+  // 1. Restore from URL
+  useEffect(() => {
+    const urlBucket = searchParams.get('bucket');
+    const urlPrefix = searchParams.get('prefix');
+
+    if (urlBucket) {
+      setSelectedBucket(urlBucket);
+      setCurrentPrefix(urlPrefix ? decodeURIComponent(urlPrefix) : '');
+    }
+  }, [searchParams]);
+
+  // 2. Validate bucket access
+  useEffect(() => {
+    if (buckets.length === 0 || !selectedBucket) return;
+
+    if (!buckets.includes(selectedBucket)) {
+      notifications.show({
+        title: 'Access Denied',
+        message: `You don't have access to bucket "${selectedBucket}".`,
+        color: 'red',
+      });
+      setSelectedBucket(null);
+      setCurrentPrefix('');
+      setSearchParams({});
+      localStorage.removeItem('s3BrowseLastLocation');
+    }
+  }, [buckets, selectedBucket, searchParams, setSearchParams]);
+
+  // 3. Sync URL
+  useEffect(() => {
+    const currentBucket = searchParams.get('bucket');
+    const currentUrlPrefix = searchParams.get('prefix') || '';
+
+    const shouldUpdate =
+      currentBucket !== selectedBucket ||
+      decodeURIComponent(currentUrlPrefix) !== currentPrefix;
+
+    if (!shouldUpdate) return;
+
+    if (selectedBucket) {
+      const newParams: { bucket: string; prefix?: string } = { bucket: selectedBucket };
+      if (currentPrefix) {
+        newParams.prefix = encodeURIComponent(currentPrefix);
+      }
+      setSearchParams(newParams);
+    } else {
+      setSearchParams({});
+    }
+  }, [selectedBucket, currentPrefix, searchParams, setSearchParams]);
+
+  // 4. Save to localStorage
+  useEffect(() => {
+    if (selectedBucket) {
+      localStorage.setItem('s3BrowseLastLocation', JSON.stringify({
+        bucket: selectedBucket,
+        prefix: currentPrefix,
+      }));
+    } else {
+      localStorage.removeItem('s3BrowseLastLocation');
+    }
+  }, [selectedBucket, currentPrefix]);
+
+  // 5. Restore from localStorage
+  useEffect(() => {
+    if (selectedBucket !== null) return;
+
+    const saved = localStorage.getItem('s3BrowseLastLocation');
+    if (saved) {
+      try {
+        const { bucket, prefix } = JSON.parse(saved);
+        if (bucket && buckets.includes(bucket)) {
+          setSelectedBucket(bucket);
+          setCurrentPrefix(prefix || '');
+          setSearchParams({
+            bucket,
+            ...(prefix ? { prefix: encodeURIComponent(prefix) } : {}),
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved browse location');
+        localStorage.removeItem('s3BrowseLastLocation');
+      }
+    }
+  }, [buckets, selectedBucket, setSearchParams]);
+
+  // Load buckets
   useEffect(() => {
     const fetchBuckets = async () => {
       try {
@@ -164,9 +256,6 @@ export function BrowseDocuments() {
         if (!res.ok) throw new Error();
         const data = await res.json();
         setBuckets(data.buckets || []);
-        if (data.buckets?.length > 0) {
-          setSelectedBucket(data.buckets[0]);
-        }
       } catch {
         notifications.show({
           title: 'Error',
@@ -177,15 +266,6 @@ export function BrowseDocuments() {
     };
     fetchBuckets();
   }, []);
-
-  // Reset to bucket root when bucket changes
-  useEffect(() => {
-    if (selectedBucket) {
-      setCurrentPrefix('');
-      setCurrentPage(1);
-      setSearchQuery('');
-    }
-  }, [selectedBucket]);
 
   // Breadcrumbs
   const breadcrumbItems = currentPrefix
@@ -238,7 +318,7 @@ export function BrowseDocuments() {
     fetchContents();
   }, [currentPrefix, selectedBucket]);
 
-  // Combine and filter items
+  // Filter & paginate
   const allItems = [
     ...folders.map(f => ({ ...f, type: 'folder' as const })),
     ...files.map(f => ({ ...f, type: 'file' as const })),
@@ -285,11 +365,39 @@ export function BrowseDocuments() {
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
       const textDecoder = new TextDecoder('utf-8');
-      const textContent = textDecoder.decode(arrayBuffer);
+      let textContent = textDecoder.decode(arrayBuffer);
 
       const ext = file.name.toLowerCase().split('.').pop() || '';
-      const codeExtensions = ['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'xml', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'];
 
+      // XML: pretty print
+      if (ext === 'xml') {
+        try {
+          const formatted = textContent
+            .replace(/></g, '>\n<')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .map((line, index) => {
+              let indent = 0;
+              const openTags = (line.match(/</g) || []).length;
+              const closeTags = (line.match(/<\//g) || []).length;
+              indent = openTags - closeTags;
+              if (indent < 0 && index > 0) indent = 0;
+              return '  '.repeat(indent) + line;
+            })
+            .join('\n')
+            .trim();
+
+          (file as any).rawContent = formatted;
+          setPreviewContent('code');
+          return;
+        } catch (e) {
+          console.warn('XML formatting failed');
+        }
+      }
+
+      // Code files
+      const codeExtensions = ['html', 'htm', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'yaml', 'yml', 'txt', 'md', 'py', 'java', 'sh', 'sql', 'log'];
       if (codeExtensions.includes(ext)) {
         (file as any).rawContent = textContent;
         setPreviewContent('code');
@@ -298,21 +406,26 @@ export function BrowseDocuments() {
 
       const type = getFileType(file.name);
 
+      // Word
       if (type === 'docx') {
         const result = await mammoth.convertToHtml({ arrayBuffer });
         setWordHtml(result.value);
         setPreviewContent('word');
-      } else if (type === 'doc') {
-        setPreviewContent('word');
-      } else if (type === 'excel' || type === 'csv') {
+        return;
+      }
+
+      // Excel / CSV
+      if (type === 'excel' || type === 'csv') {
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
         setSheetData(json as any[][]);
         setPreviewContent('spreadsheet');
-      } else {
-        setPreviewContent('iframe');
+        return;
       }
+
+      // Fallback: iframe (PDF, images, etc.)
+      setPreviewContent('iframe');
     } catch (err) {
       console.error('Preview error:', err);
       setPreviewContent('error');
@@ -360,13 +473,36 @@ export function BrowseDocuments() {
     if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
 
-  if (!selectedBucket) {
+  // === UI States ===
+  if (selectedBucket === null) {
     return (
       <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
-        <Center h="60vh">
-          <Text c="dimmed" size="xl">
-            Loading S3 buckets...
-          </Text>
+        <Center h="70vh">
+          <Stack align="center" gap="xl">
+            <IconS3 size={80} color="#cc5de8" stroke={1.5} />
+            <Stack align="center" gap="xs">
+              <Title order={2} ta="center">
+                Select an S3 Bucket to Get Started
+              </Title>
+              <Text size="lg" c="dimmed" ta="center" maw={500}>
+                Choose a bucket from the dropdown below to browse its folders and files.
+              </Text>
+            </Stack>
+
+            <Select
+              placeholder="Choose a bucket..."
+              data={buckets}
+              value={selectedBucket}
+              onChange={(value) => setSelectedBucket(value)}
+              searchable
+              w={400}
+              size="lg"
+              leftSection={<IconS3 size={24} />}
+              allowDeselect={false}
+              nothingFoundMessage="No buckets available"
+              disabled={buckets.length === 0}
+            />
+          </Stack>
         </Center>
       </Container>
     );
@@ -395,7 +531,7 @@ export function BrowseDocuments() {
   return (
     <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
       {/* Breadcrumbs + View Switch */}
-      <Group justify="space-between" align="center" mb="lg" wrap="nowrap">
+      <Group justify="space-between" align="center" mb="sm" wrap="nowrap">
         <Breadcrumbs separator={<IconChevronRight size={16} />}>
           <Anchor onClick={() => setCurrentPrefix('')} style={{ cursor: 'pointer' }}>
             {selectedBucket}
@@ -422,11 +558,14 @@ export function BrowseDocuments() {
       </Group>
 
       <Title order={1} mb="sm">
-        Browse Documents
+        <Group gap="md">
+          <IconFileSearch size={32} />
+          Browse Documents
+        </Group>
       </Title>
 
-      {/* Top Controls: Bucket + Search + Density */}
-      <Group justify="space-between" align="end" mb="xl" wrap="wrap">
+      {/* Controls */}
+      <Group justify="space-between" align="end" mb="lg" wrap="wrap">
         <Select
           placeholder="Select bucket..."
           data={buckets}
@@ -434,7 +573,8 @@ export function BrowseDocuments() {
           onChange={setSelectedBucket}
           searchable
           w={300}
-          leftSection={<IconFolder size={16} />}
+          leftSection={<IconS3 size={16} />}
+          allowDeselect={false}
         />
 
         <Group gap="md" grow>
@@ -460,25 +600,20 @@ export function BrowseDocuments() {
                 { value: 5, label: 'Compact' },
                 { value: 6, label: 'Dense' },
               ]}
-              w={220}
+              w={240}
             />
           </Group>
         </Group>
       </Group>
 
       {/* Pagination */}
-      <Group justify="flex-end" align="center" mb="xl" wrap="nowrap">
+      <Group justify="flex-end" align="center" mb="lg" wrap="nowrap">
         {totalPages > 1 && (
-          <Pagination
-            total={totalPages}
-            value={currentPage}
-            onChange={setCurrentPage}
-            withEdges
-          />
+          <Pagination total={totalPages} value={currentPage} onChange={setCurrentPage} withEdges />
         )}
       </Group>
 
-      {/* Content Grid */}
+      {/* Content */}
       {totalItems === 0 ? (
         <Text ta="center" c="dimmed" size="lg" py="xl">
           This location is empty.
@@ -486,80 +621,37 @@ export function BrowseDocuments() {
       ) : (
         <>
           {viewMode === 'cards' ? (
-            <SimpleGrid
-              cols={{ base: density, sm: density, md: density, lg: density }}
-              spacing={density <= 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
-            >
+            <SimpleGrid cols={{ base: density, sm: density, md: density, lg: density }} spacing={density <= 4 ? 'lg' : density === 5 ? 'md' : 'sm'}>
               {paginatedItems.map((item) => {
                 if (item.type === 'folder') {
                   return (
-                    <Card
-                      key={item.key}
-                      withBorder
-                      shadow="sm"
-                      padding="lg"
-                      radius="md"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => navigateToPrefix(item.key)}
-                    >
+                    <Card key={item.key} withBorder shadow="sm" padding="lg" radius="md" style={{ cursor: 'pointer' }} onClick={() => navigateToPrefix(item.key)}>
                       <Group align="center" gap="md">
                         <IconFolder size={40} color="#cc5de8" />
-                        <Text fw={600} size="lg">
-                          {item.name}
-                        </Text>
+                        <Text fw={600} size="lg">{item.name}</Text>
                       </Group>
-                      <Text size="sm" c="dimmed" mt="xs">
-                        Folder
-                      </Text>
+                      <Text size="sm" c="dimmed" mt="xs">Folder</Text>
                     </Card>
                   );
                 }
 
                 const file = item as S3File;
-
                 return (
-                  <Card
-                    key={file.key}
-                    padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
-                    radius="md"
-                    withBorder
-                    shadow="sm"
-                  >
+                  <Card key={file.key} padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} radius="md" withBorder shadow="sm">
                     <Group align="center" gap="xs" mb="xs">
                       {getFileIcon(file.name, 24)}
-                      <Text fw={500} truncate="end" maw={260}>
-                        {file.name}
-                      </Text>
+                      <Text fw={500} truncate="end" maw={260}>{file.name}</Text>
                     </Group>
-                    <Text size="xs" c="dimmed" truncate mb="md">
-                      {file.key}
-                    </Text>
+                    <Text size="xs" c="dimmed" truncate mb="md">{file.key}</Text>
                     <Group gap="xs" mb="md">
                       <Badge variant="light" color="yellow">{formatSize(file.size)}</Badge>
                       <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
                     </Group>
-
                     <Group grow mt="auto">
-                      <Button
-                        variant="light"
-                        leftSection={<IconDownload size={16} />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFile(file);
-                        }}
-                      >
+                      <Button variant="light" leftSection={<IconDownload size={16} />} onClick={(e) => { e.stopPropagation(); setSelectedFile(file); }}>
                         View
                       </Button>
-
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        size="lg"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(file.key, file.name);
-                        }}
-                      >
+                      <ActionIcon variant="light" color="red" size="lg" onClick={(e) => { e.stopPropagation(); handleDelete(file.key, file.name); }}>
                         <IconTrash size={18} />
                       </ActionIcon>
                     </Group>
@@ -568,11 +660,7 @@ export function BrowseDocuments() {
               })}
             </SimpleGrid>
           ) : (
-            <Table
-              highlightOnHover
-              verticalSpacing={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'}
-              horizontalSpacing={density >= 6 ? 'xs' : 'md'}
-            >
+            <Table highlightOnHover verticalSpacing={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} horizontalSpacing={density >= 6 ? 'xs' : 'md'}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Type</Table.Th>
@@ -585,67 +673,17 @@ export function BrowseDocuments() {
               </Table.Thead>
               <Table.Tbody>
                 {paginatedItems.map((item) => (
-                  <Table.Tr
-                    key={item.key}
-                    style={item.type === 'folder' ? { cursor: 'pointer' } : {}}
-                    onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}
-                  >
-                    <Table.Td>
-                      {item.type === 'folder' ? (
-                        <IconFolder size={18} />
-                      ) : (
-                        getFileIcon((item as S3File).name, 18)
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" c="dimmed" truncate="end" maw={400}>
-                        {item.key}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {item.type === 'folder' ? (
-                        <Badge variant="light" color="gray">—</Badge>
-                      ) : (
-                        <Badge variant="light" color="yellow">
-                          {formatSize((item as S3File).size)}
-                        </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {item.type === 'folder' ? (
-                        <Badge variant="light" color="gray">—</Badge>
-                      ) : (
-                        <Badge variant="light" color="gray">
-                          {formatDate((item as S3File).last_modified)}
-                        </Badge>
-                      )}
-                    </Table.Td>
+                  <Table.Tr key={item.key} style={item.type === 'folder' ? { cursor: 'pointer' } : {}} onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}>
+                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} /> : getFileIcon((item as S3File).name, 18)}</Table.Td>
+                    <Table.Td><Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text></Table.Td>
+                    <Table.Td><Text size="sm" c="dimmed" truncate="end" maw={400}>{item.key}</Text></Table.Td>
+                    <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="yellow">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
+                    <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="gray">{formatDate((item as S3File).last_modified)}</Badge>}</Table.Td>
                     <Table.Td>
                       {item.type === 'file' && (
                         <Group gap="xs">
-                          <Button
-                            size="xs"
-                            variant="light"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedFile(item as S3File);
-                            }}
-                          >
-                            View
-                          </Button>
-
-                          <ActionIcon
-                            variant="light"
-                            color="red"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete((item as S3File).key, item.name);
-                            }}
-                          >
+                          <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); setSelectedFile(item as S3File); }}>View</Button>
+                          <ActionIcon variant="light" color="red" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete((item as S3File).key, item.name); }}>
                             <IconTrash size={16} />
                           </ActionIcon>
                         </Group>
@@ -659,19 +697,19 @@ export function BrowseDocuments() {
         </>
       )}
 
-      {/* File Preview Drawer */}
+      {/* Preview Drawer */}
       <Drawer
         opened={!!selectedFile}
         onClose={() => setSelectedFile(null)}
         position="bottom"
-        size="85%"
+        size="100%"
         title={`Viewing: ${selectedFile?.name || 'File'}`}
         overlayProps={{ opacity: 0.5, blur: 4 }}
-        padding="md"
+        padding="sm"
+        transitionProps={{ transition: 'slide-up', duration: 300 }}
       >
         <Stack h="100%" gap="md">
-          <Group justify="space-between" align="center">
-            <Text fw={600} size="lg">File Preview</Text>
+          <Group justify="flex-end" align="center">
             <Button
               leftSection={<IconDownload size={18} />}
               onClick={() => {
@@ -698,7 +736,7 @@ export function BrowseDocuments() {
                 borderRadius: 'var(--mantine-radius-md)',
               }}
             >
-              <Loader size="xl" variant="dots" />
+              <Loader size="xl" />
             </Center>
 
             {(() => {
@@ -709,23 +747,10 @@ export function BrowseDocuments() {
 
               if (codeExtensions.includes(ext)) {
                 const languageMap: Record<string, string> = {
-                  js: 'javascript',
-                  jsx: 'javascript',
-                  ts: 'typescript',
-                  tsx: 'typescript',
-                  html: 'html',
-                  htm: 'html',
-                  json: 'json',
-                  css: 'css',
-                  xml: 'xml',
-                  yaml: 'yaml',
-                  yml: 'yaml',
-                  md: 'markdown',
-                  py: 'python',
-                  sh: 'bash',
-                  sql: 'sql',
+                  js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+                  html: 'html', htm: 'html', json: 'json', css: 'css', xml: 'xml',
+                  yaml: 'yaml', yml: 'yaml', md: 'markdown', py: 'python', sh: 'bash', sql: 'sql',
                 };
-
                 const language = languageMap[ext] || 'text';
 
                 return (
@@ -735,12 +760,7 @@ export function BrowseDocuments() {
                       style={isDark ? atomOneDark : atomOneLight}
                       showLineNumbers
                       wrapLines
-                      customStyle={{
-                        margin: 0,
-                        borderRadius: 'var(--mantine-radius-md)',
-                        padding: '1.5rem',
-                        fontSize: '14px',
-                      }}
+                      customStyle={{ margin: 0, borderRadius: 'var(--mantine-radius-md)', padding: '1.5rem', fontSize: '14px' }}
                     >
                       {(selectedFile as any).rawContent || '// Unable to display content'}
                     </SyntaxHighlighter>
@@ -754,12 +774,7 @@ export function BrowseDocuments() {
                 return (
                   <iframe
                     src={`${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      border: 'none',
-                      borderRadius: 'var(--mantine-radius-md)',
-                    }}
+                    style={{ width: '100%', height: '100%', border: 'none', borderRadius: 'var(--mantine-radius-md)' }}
                     title="File preview"
                   />
                 );
@@ -782,23 +797,15 @@ export function BrowseDocuments() {
                     </ScrollArea>
                   );
                 }
-                return (
-                  <Center h="100%">
-                    <Text c="red">Failed to load Word document</Text>
-                  </Center>
-                );
+                return <Center h="100%"><Text c="red">Failed to load Word document</Text></Center>;
               }
 
               if (type === 'doc') {
                 return (
                   <Center h="100%">
                     <Stack align="center" gap="md">
-                      <Text c="dimmed" size="lg">
-                        Legacy Word (.doc) files are not supported for preview.
-                      </Text>
-                      <Text c="dimmed" size="sm">
-                        Please download to view.
-                      </Text>
+                      <Text c="dimmed" size="lg">Legacy Word (.doc) files are not supported for preview.</Text>
+                      <Text c="dimmed" size="sm">Please download to view.</Text>
                     </Stack>
                   </Center>
                 );

@@ -18,7 +18,7 @@ import {
   Center,
   Stack,
 } from '@mantine/core';
-import { IconRefresh, IconTerminal, IconDownload, IconSearch } from '@tabler/icons-react';
+import { IconRefresh, IconTerminal, IconDownload, IconSearch, IconCloud } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -170,7 +170,7 @@ export function CloudWatchLogs() {
       <Group justify="space-between" align="center" mb="xl">
         <Title order={1}>
           <Group gap="md">
-            <IconTerminal size={32} />
+            <IconCloud size={32} />
             Browse CloudWatch Logs
           </Group>
         </Title>
