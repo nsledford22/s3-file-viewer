@@ -10,7 +10,8 @@ import '@mantine/notifications/styles.css';
 import './index.css';
 
 const theme = createTheme({
-  primaryColor: 'grape',
+  primaryColor: 'indigo',
+  // fontFamily: 'monospace'
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

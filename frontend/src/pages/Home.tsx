@@ -18,7 +18,7 @@ export function Home() {
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Group justify="center" mb="md">
-            <IconFileSearch size={48} stroke={1.5} color="var(--mantine-color-grape-6)" />
+            <IconFileSearch size={48} stroke={1.5} color="var(--mantine-color-indigo-6)" />
           </Group>
           <Title order={3} ta="center" mb="xs">
             Browse Documents

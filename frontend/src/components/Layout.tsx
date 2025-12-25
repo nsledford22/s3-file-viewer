@@ -41,9 +41,9 @@ export function Layout({ children }: LayoutProps) {
             <Switch
               checked={isDark}
               onChange={() => toggleColorScheme()}
-              size="lg"
+              size="md"
               thumbIcon={
-                isDark ? <IconMoonStars size={16} stroke={3} color="var(--mantine-color-grape-text)" /> : <IconSun size={16} stroke={3} color="orange" />
+                isDark ? <IconMoonStars size={16} stroke={2} color="var(--mantine-color-indigo-text)" /> : <IconSun size={16} stroke={2} color="orange" />
               }
               color='var(--mantine-color-dimmed)'
             />

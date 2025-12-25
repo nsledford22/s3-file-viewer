@@ -10,8 +10,11 @@ import {
 export function Footer() {
   return (
    <Group justify="space-between" align="center" h="100%">
-        <Group>
-            <Code fw={700}>v0.0.1</Code>
+        <Group align='center' gap="xs">
+            <Text size="sm" c="dimmed">
+                Version:
+            </Text>
+            <Code fw={700}>0.0.1</Code>
         </Group>
 
         <Group gap="xs">
@@ -23,8 +26,10 @@ export function Footer() {
                 href="https://github.com/nsledford22"
                 target="_blank"
                 rel="noopener noreferrer"
-                variant="subtle"
+                variant="filled"
                 title="View source on GitHub"
+                radius='xl'
+                color='var(--mantine-color-body)'
             >
                 <IconBrandGithub size={20} stroke={1.5} />
             </ActionIcon>
@@ -40,6 +45,7 @@ export function Footer() {
             rel='noopener noreferrer'
             variant="subtle"
             title="React"
+            radius='xl'
             >
             <IconBrandReact size={20} color="#61DAFB" stroke={1.5} />
             </ActionIcon>
@@ -51,6 +57,7 @@ export function Footer() {
             rel='noopener noreferrer'
             variant="subtle"
             title="Mantine"
+            radius='xl'
             >
             <IconBrandMantine size={20} color="#61DAFB" stroke={1.5} />
             </ActionIcon>
@@ -62,6 +69,7 @@ export function Footer() {
             rel='noopener noreferrer'
             variant="subtle"
             title="Python"
+            radius='xl'
             >
             <IconBrandPython size={20} color="#3776AB" stroke={1.5} />
             </ActionIcon>
@@ -73,6 +81,7 @@ export function Footer() {
                 rel='noopener noreferrer'
                 variant="subtle"
                 title="FastAPI"
+                radius='xl'
                 >
                 <svg 
                     xmlns="http://www.w3.org/2000/svg" 
@@ -99,6 +108,7 @@ export function Footer() {
                 rel='noopener noreferrer'
                 variant="subtle"
                 title="AWS"
+                radius='xl'
             >
             <IconBrandAws size={20} color="#FF9900" stroke={1.5} />
             </ActionIcon>
