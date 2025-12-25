@@ -611,18 +611,18 @@ export function BrowseDocuments() {
 
       {/* Controls */}
       <Group justify="space-between" align="end" mb="lg" wrap="wrap">
-        <Select
-          placeholder="Select bucket..."
-          data={buckets}
-          value={selectedBucket}
-          onChange={setSelectedBucket}
-          searchable
-          w={300}
-          leftSection={<IconS3 size={16} />}
-          allowDeselect={false}
-        />
+        <Group gap="lg" grow>
+          <Select
+            placeholder="Select bucket..."
+            data={buckets}
+            value={selectedBucket}
+            onChange={setSelectedBucket}
+            searchable
+            w={300}
+            leftSection={<IconS3 size={16} />}
+            allowDeselect={false}
+          />
 
-        <Group gap="md" grow>
           <TextInput
             placeholder="Search files or folders..."
             value={searchQuery}
