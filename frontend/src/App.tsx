@@ -10,13 +10,13 @@ import { CloudWatchLogs } from './pages/CloudWatchLogs';
 function App() {
   return (
     <Layout>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/browse" element={<BrowseDocuments />} />
-        <Route path="/upload" element={<UploadFile />} />
-        <Route path="/cloudwatch-logs" element={<CloudWatchLogs />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/browse" element={<BrowseDocuments />} />
+          <Route path="/upload" element={<UploadFile />} />
+          <Route path="/cloudwatch-logs" element={<CloudWatchLogs />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
     </Layout>
   );
 }

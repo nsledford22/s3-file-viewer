@@ -63,6 +63,3 @@ contains code for the api to connect to AWS and read S3 files
 ### Future Enhancements
 features I'd like to add in the near future!
 - enhance excel / csv viewing through [Univer Sheets](https://docs.univer.ai/guides/sheets) 
-- support other file types (json, sql, etc.)
-
-

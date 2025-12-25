@@ -156,50 +156,44 @@ def view_file(file_key: str, bucket_name: str = "s3-file-viewer-files"):
 @router.post("/upload_file/")
 async def upload_file(
     file: UploadFile = File(...),
-    key: str | None = Query(                   # ← Custom S3 key (path + filename)
+    key: str | None = Query(
         None,
         description="Full S3 key (e.g., 'reports/2025/Q4/report.pdf'). If not provided, uses filename only.",
         example="invoices/january/invoice_001.pdf"
     ),
-    bucket_name: str = "s3-file-viewer-files"
+    bucket_name: str = Query( 
+        ...,
+        description="Target S3 bucket name",
+    )
 ):
-    # Validate uploaded file has a filename
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided in upload")
 
     original_filename = file.filename
 
-    # Security: prevent directory traversal in original filename
+    # Security: prevent directory traversal
     if ".." in original_filename or original_filename.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid characters in uploaded filename")
 
-    # Determine final S3 key
+    # Build final key
     if key:
-        # Clean user-provided key: remove leading/trailing slashes, prevent traversal
         clean_key = key.strip("/")
-        if ".." in clean_key or "/" in clean_key and clean_key.startswith("/"):
+        if ".." in clean_key:
             raise HTTPException(status_code=400, detail="Invalid key: directory traversal not allowed")
         s3_key = clean_key if clean_key.endswith(original_filename) else f"{clean_key}/{original_filename}"
     else:
-        s3_key = original_filename  # Fallback: just the filename
+        s3_key = original_filename
 
-    # Enforce prefix (optional but recommended for organization)
-    if not s3_key.startswith("files/"):
-        s3_key = f"files/{s3_key}"
-
-    # Read file for size validation
     contents = await file.read()
     if len(contents) == 0:
         raise HTTPException(status_code=400, detail="Empty file not allowed")
-    if len(contents) > 50 * 1024 * 1024:  # 50 MB
+    if len(contents) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 50MB)")
 
-    # Guess Content-Type from final key (more accurate than original filename)
     content_type, _ = mimetypes.guess_type(s3_key)
     if content_type is None:
         content_type = 'application/octet-stream'
 
-    # Reset file pointer for upload
     await file.seek(0)
 
     s3_client = boto3.client('s3')
@@ -209,9 +203,7 @@ async def upload_file(
             Fileobj=file.file,
             Bucket=bucket_name,
             Key=s3_key,
-            ExtraArgs={
-                'ContentType': content_type
-            }
+            ExtraArgs={'ContentType': content_type}
         )
 
         return {
@@ -221,26 +213,20 @@ async def upload_file(
             "size_bytes": len(contents),
             "content_type": content_type
         }
-
     except ClientError as e:
-        error_code = e.response['Error'].get('Code', 'Unknown')
-        logger.error(f"S3 upload failed for key '{s3_key}': {error_code} - {e}")
+        logger.error(f"S3 upload failed for key '{s3_key}': {e}")
         raise HTTPException(status_code=500, detail="Failed to upload file to S3")
     except Exception as e:
-        logger.error(f"Unexpected error during upload of '{original_filename}': {e}")
+        logger.error(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
     
 @router.delete("/delete_file/")
 async def delete_file(
     key: str = Query(..., description="Full S3 key of the file to delete (e.g., 'files/reports/report.pdf')"),
-    bucket_name: str = "s3-file-viewer-files"
+    bucket_name: str = Query(..., description="S3 bucket name")
 ):
     if not key:
         raise HTTPException(status_code=400, detail="File key is required")
-
-    # Optional: basic security - ensure key starts with 'files/'
-    if not key.startswith("files/"):
-        raise HTTPException(status_code=400, detail="Invalid key: must be under 'files/'")
 
     s3_client = boto3.client('s3')
 
