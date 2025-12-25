@@ -275,6 +275,7 @@ export function UploadFile() {
           w={400}
           leftSection={<IconS3 size={18} />}
           disabled={uploading}
+          allowDeselect={false}
         />
       </Group>
 
