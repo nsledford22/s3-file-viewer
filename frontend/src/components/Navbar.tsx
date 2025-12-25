@@ -6,7 +6,7 @@ import {
   IconFileUpload,
   IconCloudNetwork,
 } from '@tabler/icons-react';
-import { Code, Group, NavLink } from '@mantine/core';
+import { NavLink } from '@mantine/core';
 import classes from './Navbar.module.css';
 
 const data = [
@@ -37,10 +37,6 @@ export function Navbar() {
 
   return (
     <>
-      <Group className={classes.header} justify="space-between" mb="md">
-        <Code fw={700}>v0.0.1</Code>
-      </Group>
-
       {links}
     </>
   );
