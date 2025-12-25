@@ -23,6 +23,8 @@ import {
   ActionIcon,
   Select,
   Tooltip,
+  Modal,
+  Button
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -50,7 +52,8 @@ import {
   IconFileSearch,
   IconBucket as IconS3,
   IconXboxX,
-  IconEye
+  IconEye,
+  IconChevronLeft
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -92,7 +95,7 @@ const getFileIcon = (filename: string, size: number = 20) => {
 
   switch (ext) {
     case 'pdf':
-      return <IconFileTypePdf size={size} color="#ED2224" />;
+      return <IconFileTypePdf size={size} color="var(--mantine-color-red-9)" />;
     case 'xlsx':
     case 'xls':
       return <IconFileTypeXls size={size} color="#008000" />;
@@ -144,7 +147,6 @@ export function BrowseDocuments() {
   const isDark = colorScheme === 'dark';
 
   const [searchParams, setSearchParams] = useSearchParams();
-
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,6 +160,8 @@ export function BrowseDocuments() {
   const [wordHtml, setWordHtml] = useState<string>('');
   const [sheetData, setSheetData] = useState<any[][]>([]);
   const [density, setDensity] = useState(4);
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<{ key: string; name: string } | null>(null);
 
   // Bucket selection
   const [buckets, setBuckets] = useState<string[]>([]);
@@ -434,12 +438,17 @@ export function BrowseDocuments() {
     }
   };
 
-  const handleDelete = async (key: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
+  const handleDelete = (key: string, name: string) => {
+    setFileToDelete({ key, name });
+    setDeleteModalOpened(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!fileToDelete || !selectedBucket) return;
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/delete_file/?key=${encodeURIComponent(key)}&bucket_name=${encodeURIComponent(selectedBucket!)}`,
+        `${API_BASE_URL}/delete_file/?key=${encodeURIComponent(fileToDelete.key)}&bucket_name=${encodeURIComponent(selectedBucket)}`,
         { method: 'DELETE' }
       );
 
@@ -450,17 +459,19 @@ export function BrowseDocuments() {
 
       notifications.show({
         title: 'Deleted',
-        message: `${name} has been permanently deleted`,
+        message: `${fileToDelete.name} has been permanently deleted`,
         color: 'red',
         icon: <IconTrash size={18} />,
       });
 
+      // Refresh the current folder contents
       const refreshed = await fetch(
-        `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket!)}&prefix=${encodeURIComponent(currentPrefix)}`
+        `${API_BASE_URL}/list_files?bucket_name=${encodeURIComponent(selectedBucket)}&prefix=${encodeURIComponent(currentPrefix)}`
       );
       const data = await refreshed.json();
       setFiles(data.files || []);
       setFolders(data.folders || []);
+
     } catch (error: any) {
       notifications.show({
         title: 'Delete Failed',
@@ -468,6 +479,9 @@ export function BrowseDocuments() {
         color: 'red',
         autoClose: false,
       });
+    } finally {
+      setDeleteModalOpened(false);
+      setFileToDelete(null);
     }
   };
 
@@ -517,7 +531,7 @@ export function BrowseDocuments() {
       <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
         <Center h="70vh">
           <Stack align="center" gap="xl">
-            <IconS3 size={80} color="#cc5de8" stroke={1.5} />
+            <IconS3 size={80} color="var(--mantine-color-indigo-6)" stroke={1.5} />
             <Stack align="center" gap="xs">
               <Title order={2} ta="center">
                 Select an S3 Bucket to Get Started
@@ -596,7 +610,7 @@ export function BrowseDocuments() {
           <Switch
             checked={viewMode === 'table'}
             onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
-            thumbIcon={viewMode === 'table' ? <IconTable size={12} stroke={3} color='var(--mantine-color-dimmed)'/> : <IconLayoutGrid size={12} stroke={3}/>}
+            thumbIcon={viewMode === 'table' ? <IconTable size={12} stroke={2.5} color='var(--mantine-color-dimmed)'/> : <IconLayoutGrid size={12} stroke={2.5} color='var(--mantine-color-dimmed)'/>}
             size='md'
           />
         </Group>
@@ -651,17 +665,46 @@ export function BrowseDocuments() {
         </Group>
       </Group>
 
-      {/* Pagination */}
-      <Group justify="flex-end" align="center" mb="lg" wrap="nowrap">
+      {/* Back Button + Pagination */}
+      <Group justify="space-between" align="center" mb="lg" wrap="nowrap">
+        {/* Back Button - only show if not at root */}
+        {currentPrefix !== '' && (
+          <Button
+            variant="transparent"
+            // color="gray"
+            leftSection={<IconChevronLeft size={18} />}
+            onClick={() => {
+              // Go up one level
+              const parts = currentPrefix.split('/').filter(Boolean);
+              parts.pop(); // remove last folder
+              const newPrefix = parts.join('/') + (parts.length > 0 ? '/' : '');
+              setCurrentPrefix(newPrefix);
+              setCurrentPage(1);
+              setSearchQuery('');
+            }}
+          >
+            Back
+          </Button>
+        )}
+
+        {/* Spacer when no back button */}
+        {currentPrefix === '' && <div />}
+
+        {/* Pagination - right-aligned */}
         {totalPages > 1 && (
-          <Pagination total={totalPages} value={currentPage} onChange={setCurrentPage} withEdges />
+          <Pagination
+            total={totalPages}
+            value={currentPage}
+            onChange={setCurrentPage}
+            withEdges
+          />
         )}
       </Group>
 
       {/* Content */}
       {totalItems === 0 ? (
         <Text ta="center" c="dimmed" size="lg" py="xl">
-          This location is empty.
+          This location is empty or nothing matches your search.
         </Text>
       ) : (
         <>
@@ -672,7 +715,7 @@ export function BrowseDocuments() {
                   return (
                     <Card key={item.key} withBorder shadow="sm" padding="lg" radius="md" style={{ cursor: 'pointer' }} onClick={() => navigateToPrefix(item.key)}>
                       <Group align="center" gap="md">
-                        <IconFolder size={40} color="#cc5de8" />
+                        <IconFolder size={40} color="var(--mantine-color-indigo-6)" />
                         <Text fw={600} size="lg">{item.name}</Text>
                       </Group>
                       <Text size="sm" c="dimmed" mt="xs">Folder</Text>
@@ -689,7 +732,7 @@ export function BrowseDocuments() {
                     </Group>
                     <Text size="xs" c="dimmed" truncate mb="md">{file.key}</Text>
                     <Group gap="xs" mb="md">
-                      <Badge variant="light" color="yellow">{formatSize(file.size)}</Badge>
+                      <Badge variant="light" color="var(--mantine-color-gray-6)">{formatSize(file.size)}</Badge>
                       <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
                     </Group>
                     <Group grow mt="auto">
@@ -708,7 +751,7 @@ export function BrowseDocuments() {
                       <Tooltip label="Download file" withArrow openDelay={1000} position='bottom'>
                         <ActionIcon
                           variant="light"
-                          color="blue"
+                          color="var(--mantine-color-green-4)"
                           size="lg"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -751,10 +794,10 @@ export function BrowseDocuments() {
               <Table.Tbody>
                 {paginatedItems.map((item) => (
                   <Table.Tr key={item.key} style={item.type === 'folder' ? { cursor: 'pointer' } : {}} onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}>
-                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} color="#cc5de8"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
+                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} color="var(--mantine-color-indigo-6)"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
                     <Table.Td><Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text></Table.Td>
                     <Table.Td><Text size="sm" c="dimmed" truncate="end" maw={400}>{item.key}</Text></Table.Td>
-                    <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="yellow">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
+                    <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="var(--mantine-color-gray-6)">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
                     <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="gray">{formatDate((item as S3File).last_modified)}</Badge>}</Table.Td>
                     <Table.Td>
                       {item.type === 'file' && (
@@ -773,7 +816,7 @@ export function BrowseDocuments() {
                           <Tooltip label="Download file" withArrow openDelay={1000}>
                             <ActionIcon
                               variant="light"
-                              color="blue"
+                              color="var(--mantine-color-green-4)"
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -949,6 +992,44 @@ export function BrowseDocuments() {
           </Stack>
         </Stack>
       </Drawer>
+      <Modal
+        opened={deleteModalOpened}
+        onClose={() => {
+          setDeleteModalOpened(false);
+          setFileToDelete(null);
+        }}
+        title="Confirm Delete"
+        overlayProps={{ opacity: 0.55, blur: 3 }}
+      >
+        <Stack>
+          <Text size="sm">
+            Are you sure you want to <strong>permanently delete</strong> "{fileToDelete?.name}"?
+          </Text>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone.
+          </Text>
+
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => {
+                setDeleteModalOpened(false);
+                setFileToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={confirmDelete}
+              leftSection={<IconTrash size={16} />}
+            >
+              Delete Permanently
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }
