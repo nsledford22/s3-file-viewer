@@ -780,22 +780,6 @@ export function BrowseDocuments() {
         }}
       >
         <Stack h="100%" gap="md">
-          <Group justify="flex-end" align="center">
-            {/* <Button
-              leftSection={<IconDownload size={18} />}
-              onClick={() => {
-                if (!selectedFile) return;
-                const url = `${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`;
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = selectedFile.name;
-                a.click();
-              }}
-            >
-              Download
-            </Button> */}
-          </Group>
-
           <Stack flex={1} pos="relative" style={{ minHeight: 0 }}>
             <Center
               pos="absolute"
