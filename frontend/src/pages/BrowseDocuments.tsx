@@ -10,7 +10,6 @@ import {
   Switch,
   Group,
   Badge,
-  Button,
   TextInput,
   Pagination,
   Loader,
@@ -48,7 +47,9 @@ import {
   IconSql,
   IconFileTypeXml,
   IconFileSearch,
-  IconBucket as IconS3
+  IconBucket as IconS3,
+  IconXboxX,
+  IconEye
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -469,6 +470,33 @@ export function BrowseDocuments() {
     }
   };
 
+  const handleDownload = async (fileKey: string, fileName: string) => {
+    if (!selectedBucket) return;
+
+    try {
+      const url = `${API_BASE_URL}/view_file/${encodeURIComponent(fileKey)}?bucket_name=${encodeURIComponent(selectedBucket)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error();
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      notifications.show({
+        title: 'Download Failed',
+        message: 'Could not download the file.',
+        color: 'red',
+      });
+    }
+  };
+
   useEffect(() => {
     if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
@@ -648,12 +676,39 @@ export function BrowseDocuments() {
                       <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
                     </Group>
                     <Group grow mt="auto">
-                      <Button variant="light" leftSection={<IconDownload size={16} />} onClick={(e) => { e.stopPropagation(); setSelectedFile(file); }}>
-                        View
-                      </Button>
-                      <ActionIcon variant="light" color="red" size="lg" onClick={(e) => { e.stopPropagation(); handleDelete(file.key, file.name); }}>
-                        <IconTrash size={18} />
-                      </ActionIcon>
+                        <ActionIcon
+                          variant="light"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFile(file);
+                          }}
+                        >
+                          <IconEye size={18} />
+                        </ActionIcon>
+
+                        <ActionIcon
+                          variant="light"
+                          color="blue"
+                          size="lg"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(file.key, file.name);
+                          }}
+                        >
+                          <IconDownload size={18} />
+                        </ActionIcon>
+
+                        <ActionIcon
+                          variant="light"
+                          color="red"
+                          size="lg"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(file.key, file.name);
+                          }}
+                        >
+                          <IconTrash size={18} />
+                        </ActionIcon>
                     </Group>
                   </Card>
                 );
@@ -682,7 +737,20 @@ export function BrowseDocuments() {
                     <Table.Td>
                       {item.type === 'file' && (
                         <Group gap="xs">
-                          <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); setSelectedFile(item as S3File); }}>View</Button>
+                          <ActionIcon size="sm" variant="light" onClick={(e) => { e.stopPropagation(); setSelectedFile(item as S3File); }}>
+                            <IconEye size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="light"
+                            color="blue"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownload((item as S3File).key, item.name);
+                            }}
+                          >
+                            <IconDownload size={16} />
+                          </ActionIcon>
                           <ActionIcon variant="light" color="red" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete((item as S3File).key, item.name); }}>
                             <IconTrash size={16} />
                           </ActionIcon>
@@ -707,24 +775,11 @@ export function BrowseDocuments() {
         overlayProps={{ opacity: 0.5, blur: 4 }}
         padding="sm"
         transitionProps={{ transition: 'slide-up', duration: 300 }}
+        closeButtonProps={{
+          icon: <IconXboxX size={32} stroke={1.5} color='red'/>,
+        }}
       >
         <Stack h="100%" gap="md">
-          <Group justify="flex-end" align="center">
-            <Button
-              leftSection={<IconDownload size={18} />}
-              onClick={() => {
-                if (!selectedFile) return;
-                const url = `${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`;
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = selectedFile.name;
-                a.click();
-              }}
-            >
-              Download
-            </Button>
-          </Group>
-
           <Stack flex={1} pos="relative" style={{ minHeight: 0 }}>
             <Center
               pos="absolute"
