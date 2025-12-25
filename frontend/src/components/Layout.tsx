@@ -1,6 +1,6 @@
 // src/components/Layout.tsx
 import React from 'react';
-import { AppShell, Group, Title, ActionIcon, useMantineColorScheme } from '@mantine/core';
+import { AppShell, Group, Title, useMantineColorScheme, Switch, Text } from '@mantine/core';
 import {
   IconSun,
   IconMoonStars,
@@ -29,17 +29,25 @@ export function Layout({ children }: LayoutProps) {
       <AppShell.Header p="md">
         <Group justify="space-between" h="100%" align="center">
           <Title order={3} fw={700}>
-            S3 Document Viewer
+            Document Viewer
           </Title>
-
-          <ActionIcon
-            variant="default"
-            size="lg"
-            onClick={() => toggleColorScheme()}
-            aria-label="Toggle light/dark mode"
-          >
-            {isDark ? <IconSun size={20} stroke={1.5} /> : <IconMoonStars size={20} stroke={1.5} />}
-          </ActionIcon>
+          <Group>
+            <Text
+              size="sm" 
+              c="dimmed"
+            >
+              {isDark ? 'Dark Mode' : 'Light Mode'}
+            </Text>
+            <Switch
+              checked={isDark}
+              onChange={() => toggleColorScheme()}
+              size="lg"
+              thumbIcon={
+                isDark ? <IconMoonStars size={16} stroke={3} color="var(--mantine-color-grape-text)" /> : <IconSun size={16} stroke={3} color="orange" />
+              }
+              color='var(--mantine-color-dimmed)'
+            />
+          </Group>
         </Group>
       </AppShell.Header>
 

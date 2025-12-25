@@ -22,6 +22,7 @@ import {
   Slider,
   ActionIcon,
   Select,
+  Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -501,6 +502,15 @@ export function BrowseDocuments() {
     if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
 
+  // Reset prefix to root when bucket changes
+  useEffect(() => {
+    if (selectedBucket) {
+      setCurrentPrefix('');
+      setCurrentPage(1);
+      setSearchQuery('');
+    }
+  }, [selectedBucket]);
+
   // === UI States ===
   if (selectedBucket === null) {
     return (
@@ -576,11 +586,18 @@ export function BrowseDocuments() {
         </Breadcrumbs>
 
         <Group gap="xs" align="center">
-          <Text size="sm" fw={500}>View:</Text>
+          <Text 
+            size="sm" 
+            c='dimmed'
+            fw={500}
+          >
+            {viewMode === 'table' ? 'Table View' : 'Card View'}
+          </Text>
           <Switch
             checked={viewMode === 'table'}
             onChange={(e) => setViewMode(e.currentTarget.checked ? 'table' : 'cards')}
-            thumbIcon={viewMode === 'table' ? <IconTable size={12} /> : <IconLayoutGrid size={12} />}
+            thumbIcon={viewMode === 'table' ? <IconTable size={12} stroke={3} color='var(--mantine-color-dimmed)'/> : <IconLayoutGrid size={12} stroke={3}/>}
+            size='md'
           />
         </Group>
       </Group>
@@ -594,18 +611,18 @@ export function BrowseDocuments() {
 
       {/* Controls */}
       <Group justify="space-between" align="end" mb="lg" wrap="wrap">
-        <Select
-          placeholder="Select bucket..."
-          data={buckets}
-          value={selectedBucket}
-          onChange={setSelectedBucket}
-          searchable
-          w={300}
-          leftSection={<IconS3 size={16} />}
-          allowDeselect={false}
-        />
+        <Group gap="lg" grow>
+          <Select
+            placeholder="Select bucket..."
+            data={buckets}
+            value={selectedBucket}
+            onChange={setSelectedBucket}
+            searchable
+            w={300}
+            leftSection={<IconS3 size={16} />}
+            allowDeselect={false}
+          />
 
-        <Group gap="md" grow>
           <TextInput
             placeholder="Search files or folders..."
             value={searchQuery}
@@ -676,8 +693,10 @@ export function BrowseDocuments() {
                       <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
                     </Group>
                     <Group grow mt="auto">
+                      <Tooltip label="Preview file" withArrow openDelay={1000} position='bottom'>
                         <ActionIcon
                           variant="light"
+                          size='lg'
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedFile(file);
@@ -685,7 +704,8 @@ export function BrowseDocuments() {
                         >
                           <IconEye size={18} />
                         </ActionIcon>
-
+                      </Tooltip>
+                      <Tooltip label="Download file" withArrow openDelay={1000} position='bottom'>
                         <ActionIcon
                           variant="light"
                           color="blue"
@@ -697,7 +717,8 @@ export function BrowseDocuments() {
                         >
                           <IconDownload size={18} />
                         </ActionIcon>
-
+                      </Tooltip>
+                      <Tooltip label="Permanently delete file" withArrow openDelay={1000} position='bottom'>
                         <ActionIcon
                           variant="light"
                           color="red"
@@ -709,6 +730,7 @@ export function BrowseDocuments() {
                         >
                           <IconTrash size={18} />
                         </ActionIcon>
+                      </Tooltip>
                     </Group>
                   </Card>
                 );
@@ -729,7 +751,7 @@ export function BrowseDocuments() {
               <Table.Tbody>
                 {paginatedItems.map((item) => (
                   <Table.Tr key={item.key} style={item.type === 'folder' ? { cursor: 'pointer' } : {}} onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}>
-                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} /> : getFileIcon((item as S3File).name, 18)}</Table.Td>
+                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} color="#cc5de8"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
                     <Table.Td><Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text></Table.Td>
                     <Table.Td><Text size="sm" c="dimmed" truncate="end" maw={400}>{item.key}</Text></Table.Td>
                     <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="yellow">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
@@ -737,23 +759,43 @@ export function BrowseDocuments() {
                     <Table.Td>
                       {item.type === 'file' && (
                         <Group gap="xs">
-                          <ActionIcon size="sm" variant="light" onClick={(e) => { e.stopPropagation(); setSelectedFile(item as S3File); }}>
-                            <IconEye size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="light"
-                            color="blue"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload((item as S3File).key, item.name);
-                            }}
-                          >
-                            <IconDownload size={16} />
-                          </ActionIcon>
-                          <ActionIcon variant="light" color="red" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete((item as S3File).key, item.name); }}>
-                            <IconTrash size={16} />
-                          </ActionIcon>
+                          <Tooltip label="Preview file" withArrow openDelay={1000}>
+                            <ActionIcon 
+                              size="sm" 
+                              variant="light" 
+                              onClick={(e) => {
+                                e.stopPropagation(); setSelectedFile(item as S3File);
+                              }}
+                            >
+                              <IconEye size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Download file" withArrow openDelay={1000}>
+                            <ActionIcon
+                              variant="light"
+                              color="blue"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload((item as S3File).key, item.name);
+                              }}
+                            >
+                              <IconDownload size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Permanently delete file" withArrow openDelay={1000}>
+                            <ActionIcon 
+                              variant="light" 
+                              color="red" 
+                              size="sm" 
+                              onClick={(e) => {
+                                e.stopPropagation(); handleDelete((item as S3File).key, item.name);
+                              }}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          
                         </Group>
                       )}
                     </Table.Td>
