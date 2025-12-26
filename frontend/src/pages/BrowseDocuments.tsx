@@ -38,6 +38,7 @@ import {
   IconFileTypeXls,
   IconFileTypeCsv,
   IconFileTypeDocx,
+  IconFileTypeDoc,
   IconChevronRight,
   IconTrash,
   IconBrandPython,
@@ -102,8 +103,9 @@ const getFileIcon = (filename: string, size: number = 20) => {
     case 'csv':
       return <IconFileTypeCsv size={size} color="#008040" />;
     case 'docx':
-    case 'doc':
       return <IconFileTypeDocx size={size} color="#00A2ED" />;
+    case 'doc':
+      return <IconFileTypeDoc size={size} color="#00A2ED" />;
     case 'html':
     case 'htm':
       return <IconBrandHtml5 size={size} color="#E34F26" />;
@@ -159,7 +161,7 @@ export function BrowseDocuments() {
   const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'code' | 'error'>('loading');
   const [wordHtml, setWordHtml] = useState<string>('');
   const [sheetData, setSheetData] = useState<any[][]>([]);
-  const [density, setDensity] = useState(4);
+  const [density, setDensity] = useState(5);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<{ key: string; name: string } | null>(null);
 
@@ -430,6 +432,11 @@ export function BrowseDocuments() {
         return;
       }
 
+      if (type === 'doc' || type === 'other') {
+        setPreviewContent('error');
+        return;
+      }
+
       // Fallback: iframe (PDF, images, etc.)
       setPreviewContent('iframe');
     } catch (err) {
@@ -559,6 +566,7 @@ export function BrowseDocuments() {
               allowDeselect={false}
               nothingFoundMessage="No buckets available"
               disabled={buckets.length === 0}
+              withAlignedLabels
             />
           </Stack>
         </Center>
@@ -620,8 +628,8 @@ export function BrowseDocuments() {
       </Title>
 
       {/* Controls */}
-      <Group justify="space-between" align="end" mb="lg" wrap="wrap">
-        <Group gap="lg" grow>
+      <Group justify="space-between" mb="lg" wrap="wrap">
+        <Group gap="lg" align='center'>
           <Select
             placeholder="Select bucket..."
             data={buckets}
@@ -631,6 +639,8 @@ export function BrowseDocuments() {
             w={300}
             leftSection={<IconS3 size={16} />}
             allowDeselect={false}
+            nothingFoundMessage="No matching buckets found."
+            withAlignedLabels
           />
 
           <TextInput
@@ -638,26 +648,25 @@ export function BrowseDocuments() {
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            w={400}
+            w={300}
           />
-
-          <Group gap="xs" align="center">
-            <Text size="sm" fw={500}>Item size:</Text>
-            <Slider
-              min={3}
-              max={6}
-              step={1}
-              value={density}
-              onChange={setDensity}
-              marks={[
-                { value: 3, label: 'Spacious' },
-                { value: 4, label: 'Normal' },
-                { value: 5, label: 'Compact' },
-                { value: 6, label: 'Dense' },
-              ]}
-              w={240}
-            />
-          </Group>
+        </Group>
+        <Group gap="xs" align="center">
+          <Text size="sm" fw={500}>Item size:</Text>
+          <Slider
+            min={3}
+            max={6}
+            step={1}
+            value={density}
+            onChange={setDensity}
+            marks={[
+              { value: 3, label: 'Spacious' },
+              { value: 4, label: 'Normal' },
+              { value: 5, label: 'Compact' },
+              { value: 6, label: 'Dense' },
+            ]}
+            w={250}
+          />
         </Group>
       </Group>
 
@@ -666,7 +675,7 @@ export function BrowseDocuments() {
         {/* Back Button */}
         <Button
           variant="transparent"
-          color="var(--mantine-color-indigo-6)"
+          color="var(--mantine-color-indigo-4)"
           leftSection={<IconChevronLeft size={18} />}
           disabled={currentPrefix === ''}
           onClick={() => {
@@ -725,14 +734,18 @@ export function BrowseDocuments() {
                 const file = item as S3File;
                 return (
                   <Card key={file.key} padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} radius="md" withBorder shadow="sm">
-                    <Group align="center" gap="xs" mb="xs">
+                    <Group align="center" gap="xs" mb="xs" wrap='nowrap'>
                       {getFileIcon(file.name, 24)}
-                      <Text fw={500} truncate="end" maw={260}>{file.name}</Text>
+                      <Tooltip label={file.name} withArrow openDelay={1000}>
+                        <Text fw={500} truncate="end" maw={260}>{file.name}</Text>
+                      </Tooltip>
                     </Group>
-                    <Text size="xs" c="dimmed" truncate mb="md">{file.key}</Text>
-                    <Group gap="xs" mb="md">
-                      <Badge variant="light" color="var(--mantine-color-gray-6)">{formatSize(file.size)}</Badge>
-                      <Badge variant="light" color="gray">{formatDate(file.last_modified)}</Badge>
+                    <Tooltip label={`Full path: ${file.key}`} withArrow openDelay={1000}>
+                      <Text size="xs" c="dimmed" truncate mb="md">{file.key}</Text>
+                    </Tooltip>
+                    <Group gap='xs' mb="sm" align='center' wrap='nowrap'>
+                      <Badge variant="light" color="var(--mantine-color-gray-6)" size='sm'>{formatSize(file.size)}</Badge>
+                      <Badge variant="light" color="gray" size='sm'>{formatDate(file.last_modified)}</Badge>
                     </Group>
                     <Group grow mt="auto">
                       <Tooltip label="Preview file" withArrow openDelay={1000} position='bottom'>
@@ -914,7 +927,7 @@ export function BrowseDocuments() {
 
               const type = getFileType(selectedFile.name);
 
-              if (previewContent === 'iframe' || type === 'pdf' || type === 'other') {
+              if (previewContent === 'iframe') {
                 return (
                   <iframe
                     src={`${API_BASE_URL}/view_file/${encodeURIComponent(selectedFile.key)}?bucket_name=${encodeURIComponent(selectedBucket!)}`}

@@ -26,10 +26,10 @@ export function Footer() {
                 href="https://github.com/nsledford22/s3-file-viewer"
                 target="_blank"
                 rel="noopener noreferrer"
-                variant="filled"
+                variant="subtle"
                 title="View source on GitHub"
                 radius='xl'
-                color='var(--mantine-color-body)'
+                color='background-color: light-dark(var(--mantine-color-white), var(--mantine-color-black))'
             >
                 <IconBrandGithub size={20} stroke={1.5} />
             </ActionIcon>
