@@ -11,7 +11,7 @@ import './index.css';
 
 const theme = createTheme({
   primaryColor: 'indigo',
-  // fontFamily: 'monospace'
+  fontFamily: 'Poppins, sans-serif',
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
