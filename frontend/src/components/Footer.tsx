@@ -23,7 +23,7 @@ export function Footer() {
             </Text>
             <ActionIcon
                 component="a"
-                href="https://github.com/nsledford22"
+                href="https://github.com/nsledford22/s3-file-viewer"
                 target="_blank"
                 rel="noopener noreferrer"
                 variant="filled"

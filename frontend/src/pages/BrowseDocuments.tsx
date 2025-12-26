@@ -1,5 +1,5 @@
 // src/pages/BrowseDocuments.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Title,
@@ -51,9 +51,9 @@ import {
   IconFileTypeXml,
   IconFileSearch,
   IconBucket as IconS3,
-  IconXboxX,
   IconEye,
-  IconChevronLeft
+  IconChevronLeft,
+  IconX
 } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -153,7 +153,7 @@ export function BrowseDocuments() {
   const [files, setFiles] = useState<S3File[]>([]);
   const [folders, setFolders] = useState<S3Folder[]>([]);
   const [currentPrefix, setCurrentPrefix] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [_, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<S3File | null>(null);
   const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'code' | 'error'>('loading');
@@ -516,13 +516,19 @@ export function BrowseDocuments() {
     if (selectedFile) loadFilePreview(selectedFile);
   }, [selectedFile]);
 
-  // Reset prefix to root when bucket changes
+  // Keep track of previous bucket to detect actual changes
+  const prevBucketRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (selectedBucket) {
+    // Only reset prefix if we're switching from one valid bucket to another
+    if (selectedBucket && prevBucketRef.current && selectedBucket !== prevBucketRef.current) {
       setCurrentPrefix('');
       setCurrentPage(1);
       setSearchQuery('');
     }
+
+    // Update ref for next comparison
+    prevBucketRef.current = selectedBucket;
   }, [selectedBucket]);
 
   // === UI States ===
@@ -555,16 +561,6 @@ export function BrowseDocuments() {
               disabled={buckets.length === 0}
             />
           </Stack>
-        </Center>
-      </Container>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Container fluid py="xl" px={{ base: 'md', lg: 'xl' }}>
-        <Center h="60vh">
-          <Loader size="lg" />
         </Center>
       </Container>
     );
@@ -667,38 +663,41 @@ export function BrowseDocuments() {
 
       {/* Back Button + Pagination */}
       <Group justify="space-between" align="center" mb="lg" wrap="nowrap">
-        {/* Back Button - only show if not at root */}
-        {currentPrefix !== '' && (
-          <Button
-            variant="transparent"
-            // color="gray"
-            leftSection={<IconChevronLeft size={18} />}
-            onClick={() => {
-              // Go up one level
-              const parts = currentPrefix.split('/').filter(Boolean);
-              parts.pop(); // remove last folder
-              const newPrefix = parts.join('/') + (parts.length > 0 ? '/' : '');
-              setCurrentPrefix(newPrefix);
-              setCurrentPage(1);
-              setSearchQuery('');
-            }}
-          >
-            Back
-          </Button>
-        )}
+        {/* Back Button */}
+        <Button
+          variant="transparent"
+          color="var(--mantine-color-indigo-6)"
+          leftSection={<IconChevronLeft size={18} />}
+          disabled={currentPrefix === ''}
+          onClick={() => {
+            if (currentPrefix === '') return; // Extra safety
+
+            const parts = currentPrefix.split('/').filter(Boolean);
+            parts.pop(); // remove last folder
+            const newPrefix = parts.join('/') + (parts.length > 0 ? '/' : '');
+            setCurrentPrefix(newPrefix);
+            setCurrentPage(1);
+            setSearchQuery('');
+          }}
+          style={{
+            cursor: currentPrefix === '' ? 'not-allowed' : 'pointer',
+            opacity: currentPrefix === '' ? 0.5 : 1,
+          }}
+        >
+          Back
+        </Button>
 
         {/* Spacer when no back button */}
         {currentPrefix === '' && <div />}
 
         {/* Pagination - right-aligned */}
-        {totalPages > 1 && (
           <Pagination
             total={totalPages}
             value={currentPage}
             onChange={setCurrentPage}
             withEdges
+            disabled={currentPrefix === ''}
           />
-        )}
       </Group>
 
       {/* Content */}
@@ -780,7 +779,12 @@ export function BrowseDocuments() {
               })}
             </SimpleGrid>
           ) : (
-            <Table highlightOnHover verticalSpacing={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} horizontalSpacing={density >= 6 ? 'xs' : 'md'}>
+            <Table 
+              highlightOnHover 
+              verticalSpacing={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} 
+              horizontalSpacing={density >= 6 ? 'xs' : 'md'}
+              striped
+            >
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Type</Table.Th>
@@ -794,7 +798,7 @@ export function BrowseDocuments() {
               <Table.Tbody>
                 {paginatedItems.map((item) => (
                   <Table.Tr key={item.key} style={item.type === 'folder' ? { cursor: 'pointer' } : {}} onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}>
-                    <Table.Td>{item.type === 'folder' ? <IconFolder size={18} color="var(--mantine-color-indigo-6)"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
+                    <Table.Td align='center' w={25}>{item.type === 'folder' ? <IconFolder size={18} color="var(--mantine-color-indigo-6)"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
                     <Table.Td><Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text></Table.Td>
                     <Table.Td><Text size="sm" c="dimmed" truncate="end" maw={400}>{item.key}</Text></Table.Td>
                     <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="var(--mantine-color-gray-6)">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
@@ -861,7 +865,7 @@ export function BrowseDocuments() {
         padding="sm"
         transitionProps={{ transition: 'slide-up', duration: 300 }}
         closeButtonProps={{
-          icon: <IconXboxX size={32} stroke={1.5} color='red'/>,
+          icon: <IconX size={32} stroke={2} color='red'/>,
         }}
       >
         <Stack h="100%" gap="md">
