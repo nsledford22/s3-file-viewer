@@ -155,7 +155,7 @@ export function BrowseDocuments() {
   const [files, setFiles] = useState<S3File[]>([]);
   const [folders, setFolders] = useState<S3Folder[]>([]);
   const [currentPrefix, setCurrentPrefix] = useState('');
-  const [_, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<S3File | null>(null);
   const [previewContent, setPreviewContent] = useState<'loading' | 'iframe' | 'word' | 'spreadsheet' | 'code' | 'error'>('loading');
@@ -620,12 +620,15 @@ export function BrowseDocuments() {
         </Group>
       </Group>
 
-      <Title order={1} mb="sm">
-        <Group gap="md">
-          <IconFileSearch size={32} />
-          Browse Documents
-        </Group>
-      </Title>
+      <Group>
+        <Title order={1} mb="sm">
+          <Group gap="md">
+            <IconFileSearch size={32} />
+            Browse Documents
+          </Group>
+        </Title>
+        {loading && <Loader type='dots' mb="sm" size="lg" />}
+      </Group>
 
       {/* Controls */}
       <Group justify="space-between" mb="lg" wrap="wrap">
@@ -735,9 +738,9 @@ export function BrowseDocuments() {
                 return (
                   <Card key={file.key} padding={density <= 3 ? 'xl' : density === 4 ? 'lg' : density === 5 ? 'md' : 'sm'} radius="md" withBorder shadow="sm">
                     <Group align="center" gap="xs" mb="xs" wrap='nowrap'>
-                      {getFileIcon(file.name, 24)}
+                      {getFileIcon(file.name, 30)}
                       <Tooltip label={file.name} withArrow openDelay={1000}>
-                        <Text fw={500} truncate="end" maw={260}>{file.name}</Text>
+                        <Text fw={500} truncate="end" maw={250}>{file.name}</Text>
                       </Tooltip>
                     </Group>
                     <Tooltip label={`Full path: ${file.key}`} withArrow openDelay={1000}>
@@ -811,7 +814,7 @@ export function BrowseDocuments() {
               <Table.Tbody>
                 {paginatedItems.map((item) => (
                   <Table.Tr key={item.key} style={item.type === 'folder' ? { cursor: 'pointer' } : {}} onClick={() => item.type === 'folder' && navigateToPrefix(item.key)}>
-                    <Table.Td align='center' w={25}>{item.type === 'folder' ? <IconFolder size={18} color="var(--mantine-color-indigo-6)"/> : getFileIcon((item as S3File).name, 18)}</Table.Td>
+                    <Table.Td align='center' w={25}>{item.type === 'folder' ? <IconFolder size={18} color="var(--mantine-color-indigo-6)"/> : getFileIcon((item as S3File).name, 20)}</Table.Td>
                     <Table.Td><Text fw={item.type === 'folder' ? 600 : 500}>{item.name}</Text></Table.Td>
                     <Table.Td><Text size="sm" c="dimmed" truncate="end" maw={400}>{item.key}</Text></Table.Td>
                     <Table.Td>{item.type === 'folder' ? <Badge variant="light" color="gray">—</Badge> : <Badge variant="light" color="var(--mantine-color-gray-6)">{formatSize((item as S3File).size)}</Badge>}</Table.Td>
